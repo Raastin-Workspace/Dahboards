@@ -1,10 +1,6 @@
 streamlit
-pandpd
-seaborn 
+pandas
 matplotlib 
 numpy 
 plotly
-itertools
-functools
 polars 
-datetime
