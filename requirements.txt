@@ -1,1 +1,10 @@
+streamlit
+pandpd
+seaborn 
+matplotlib 
+numpy 
 plotly
+itertools
+functools
+polars 
+datetime
