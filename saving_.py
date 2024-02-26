@@ -235,14 +235,14 @@ data = data.filter(
 col1, col2 = st.columns(2,)
 
 col1.metric(
-    "North Star: Deposit under Management", "{} B$".format(
+    "North Star Metric: Deposit under Management", "{} B$".format(
         round(
             data.select( pl.col('DUM').last() 
                     ).row(0)[0] * ( 10**-9) , 2 )
         )
     , "{} %".format(
         round(
-            ( data.select('DUM').row(-1)[0] -  data.select('DUM').row(-2)[0] ) / ( data.select('DUM').row(-2)[0] ) *100 
+            ( data.select('DUM').row(-2)[0] -  data.select('DUM').row(-3)[0] ) / ( data.select('DUM').row(-3)[0] ) *100 
             , 2)
         )
     )
@@ -299,7 +299,7 @@ col2.metric(
         )
     , "{} %".format(
         round(
-            ( data.groupby('date').DD.sum().iloc[-1] -  data.groupby('date').DD.sum().iloc[-2] ) / ( data.groupby('date').DD.sum().iloc[-2] ) *100 
+            ( data.groupby('date').DD.sum().iloc[-2] -  data.groupby('date').DD.sum().iloc[-3] ) / ( data.groupby('date').DD.sum().iloc[-3] ) *100 
             , 2)
         )
 )
