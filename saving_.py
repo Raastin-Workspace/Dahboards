@@ -40,7 +40,7 @@ pdf = pl.DataFrame()
 
 if f1 is None:
     # show user message
-    pdf = pl.read_csv('saving.csv')
+    pdf = pl.read_csv('https://github.com/Raastin-Workspace/streamlit/raw/main/saving.csv')
     st.write('Please Upload Your File')
 else:
 
