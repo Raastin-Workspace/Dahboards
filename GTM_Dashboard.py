@@ -643,10 +643,13 @@ else:
         & pl.col('service').is_in( ['all'] )
     ).with_columns( (pl.col('ATPV').abs()).alias('pATPV') )
     
+    mtime_axis = due_data.select( pl.col('mdate').unique() ).to_series().to_list()
+    time_axis = trxn_data.select( pl.col('date').unique() ).to_series().to_list()
+    time_axis_sorted = sorted(list( set( mtime_axis + time_axis) ))
+
+
     due_data = due_data.to_pandas()
-    
     trxn_data = trxn_data.to_pandas()
-    
     
     fig = px.bar( 
         trxn_data 
@@ -655,8 +658,8 @@ else:
         , color = 'trxn_type' 
        
         , category_orders = { 
-            'trxn_type' : 
-            ['mature' ,'break' , 'withdraw', 'renew'] 
+            'trxn_type' : ['mature' ,'break' , 'withdraw', 'renew'] 
+            , 'date' : time_axis_sorted
         }
        
         , color_discrete_map= { 
@@ -698,11 +701,12 @@ else:
     # #####################    
 
     DUM = trxns
-    DUM = DUM.filter( pl.col('date') == pl.col('date').max() )
+
     DUM = DUM.filter( 
         (pl.col('country') != 'all')
         & (pl.col('trxn_type') == 'all')
         & (pl.col('service') != 'all')
+        & ( pl.col('date') == pl.col('date').max() )
     ) 
     
     DUM = DUM.melt( id_vars= [ 'country' ,'service' ,'trxn_type'] , value_vars= ['DUM'] ,)
@@ -713,13 +717,13 @@ else:
         (pl.col('country') != 'all')
         & (pl.col('trxn_type') == 'all')
         & (pl.col('service') != 'all')
+        & ( pl.col('mdate') == pl.col('date').max() )
     )
-    DD = DD.filter ( pl.col('mdate') == pl.col('date').max() )
     # DD = DD.filter ( pl.col('date') != pl.col('date').max() )
     DD = DD.unique(subset=[ 'country' ,'service' ,'trxn_type','mdate'], keep="last")
 
     DD = DD.melt( id_vars= [ 'country' ,'service' ,'trxn_type'] , value_vars= ['DD'] )
-    data = pl.concat([DUM , DD])
+    data = pl.concat([ DD , DUM])
     
     data = data.filter( pl.col('value') != 0 )
     data = data.with_columns(
