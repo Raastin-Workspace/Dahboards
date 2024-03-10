@@ -74,17 +74,17 @@ B_frac = 10**(-9)
 # =============================================================================
 
 if 'pdf' not in st.session_state:
-    st.session_state['pdf'] = pl.scan_csv('deposit_accounts.csv')
+    st.session_state.pdf = pl.scan_csv('deposit_accounts.csv')
 
 
-    st.session_state.pdf =  st.session_state.pdf.with_columns(pl.col("population") * M_frac)
+    # st.session_state.pdf =  st.session_state.pdf.with_columns(pl.col("population") * M_frac)
     # 
     st.session_state.pdf = st.session_state.pdf.with_columns( pl.col([ 'acc_maturity_date' , 'trxn_datetime' , 'acc_opening_date']).str.to_datetime())
 
     st.session_state.pdf = st.session_state.pdf.with_columns(
         pl.col('trxn_datetime').dt.date().alias('date')
         , pl.col('acc_maturity_date').dt.date().alias('mdate')
-    ).sort( by = [ 'country' ,'service'  , 'date' , 'trxn_type'])
+    )
 
 
 
@@ -131,6 +131,7 @@ if 'pdf' not in st.session_state:
             pl.col('tpv')
         ).alias('atpv') # artificial tpv, since renewal's tpv is 0
     )
+    st.session_state.pdf = st.session_state.pdf.collect().lazy()
 
 
 # 
@@ -140,7 +141,6 @@ last_day = st.session_state.pdf.select( 'date').max().collect().to_series().max(
 duration = (last_day - first_day).days
 # 
 
-st.session_state.pdf = st.session_state.pdf.collect().lazy()
 
 
 # =============================================================================
@@ -188,7 +188,7 @@ with st.expander("Filters:"):
     
     
     
-    freq = cols[-4].selectbox('Frequency', period_labels, index= 2 )
+    freq = cols[-4].selectbox('Frequency', period_labels, index= 1  )
     freq_index = preiod_index[freq]
     
     
@@ -201,7 +201,7 @@ with st.expander("Filters:"):
     # )
     
     
-    country_list = st.session_state.pdf.select('country').unique().collect().to_pandas()['country'].sort_values().tolist()
+    country_list = st.session_state.pdf.select('country').unique().collect().to_pandas()['country']#.sort_values().tolist()
     location_container = cols[-3].container()
     all_countries = cols[-3].checkbox("All Locations",value=1 )
     selected_locations = []
@@ -214,7 +214,7 @@ with st.expander("Filters:"):
         selected_locations =  location_container.multiselect("Locations:",
             country_list)
         
-    service_list = st.session_state.pdf.select('service').unique().collect().to_pandas().dropna()['service'].sort_values().tolist()
+    service_list = st.session_state.pdf.select('service').unique().collect().to_pandas().dropna()['service']#.sort_values().tolist()
     service_container = cols[-2].container()
     all_services = cols[-2].checkbox("All Services",value=1 )
     selected_services = []
@@ -227,7 +227,7 @@ with st.expander("Filters:"):
         selected_services =  service_container.multiselect("Services:",
             service_list)
         
-    channel_list = st.session_state.pdf.select('channel').unique().collect().to_pandas().dropna()['channel'].sort_values().tolist()
+    channel_list = st.session_state.pdf.select('channel').unique().collect().to_pandas().dropna()['channel']#.sort_values().tolist()
     channel_container = cols[-1].container()
     all_channels = cols[-1].checkbox("All Channels",value=1 )
     selected_channels = []
@@ -271,22 +271,22 @@ if len(selected_channels) > 0:
 # =============================================================================
 # Feature Extraction - locations
 # =============================================================================
-if 'plocations' not in st.session_state:
+# if 'plocations' not in st.session_state:
 
-    st.session_state.plocations = st.session_state.pdf.select( pl.col(['country', 'population'  ]) ).unique().cache()
-    st.session_state.plocations = st.session_state.plocations.select( pl.all().sort_by('population' , descending=True) )
-    st.session_state.plocations = st.session_state.plocations.with_columns( country_category = pl.lit('small'))
+#     st.session_state.plocations = st.session_state.pdf.select( pl.col(['country', 'population'  ]) ).unique().cache()
+#     st.session_state.plocations = st.session_state.plocations.select( pl.all().sort_by('population' , descending=True) )
+#     st.session_state.plocations = st.session_state.plocations.with_columns( country_category = pl.lit('small'))
 
-    st.session_state.plocations = st.session_state.plocations.with_columns(
-    pl.when( pl.col('population') > 20 )
-                .then(pl.lit('XBig'))
-            .when( pl.col('population') > 10 )
-                .then(pl.lit('Big'))
-            .when( pl.col('population') > 5 )
-                .then(pl.lit('Med'))
-            .otherwise(pl.lit('Small'))
-        .alias('country_category')
-    )
+#     st.session_state.plocations = st.session_state.plocations.with_columns(
+#     pl.when( pl.col('population') > 20 )
+#                 .then(pl.lit('XBig'))
+#             .when( pl.col('population') > 10 )
+#                 .then(pl.lit('Big'))
+#             .when( pl.col('population') > 5 )
+#                 .then(pl.lit('Med'))
+#             .otherwise(pl.lit('Small'))
+#         .alias('country_category')
+#     )
 
 # =============================================================================
 # Feature Extraction - acquisition KPIs
@@ -298,7 +298,7 @@ if 'acq_kpis' not in st.session_state:
 
 
     st.session_state.acq_kpis = {}
-
+    signups = st.session_state.pdf.filter( pl.col('trxn_type').is_in( ['signup' ] ) )
     cols = [   'country'  ,'channel', 'verified']
 
     for i , period in enumerate( period_cols ):
@@ -311,29 +311,29 @@ if 'acq_kpis' not in st.session_state:
 
     
         kpis = [ 
-            st.session_state.pdf.filter( pl.col('trxn_type').is_in(['signup' ] )).group_by( [*x ,period  ] ).agg( 
+            signups.group_by( pl.col( [ *x ,period  ] ) , maintain_order = True).agg( 
                 pl.col('user_id').n_unique().alias( 'U')
                 , pl.col('customer_acquisition_cost').mean().alias('A_CAC')
                 , (pl.col('acc_opening_date') - pl.col('trxn_datetime')).dt.total_hours().mean().alias('A_TAT')
             ) for x in combs 
         ] 
         kpis = pl.concat(kpis , how= 'diagonal')
-        kpis = kpis.with_columns(pl.col(cols).fill_null('all')).sort( by = cols + [ period ]  )
+        kpis = kpis.with_columns(pl.col(cols).fill_null('all')).sort( pl.col(   period ) )
 
         kpis = kpis.rename({period : 'date'})
         
         kpis = kpis.with_columns(
-            pl.col([ 'date', 'country' ,'channel' , 'verified'  ])
-            , pl.col("U").cum_sum().over([ 'country' ,'channel' , 'verified']).alias("cum_U")
+            pl.col([ 'date', *cols  ])
+            , pl.col("U").cum_sum().over( cols ).alias("cum_U")
         )
         
 
         kpis = kpis.with_columns(
         pl.selectors.by_dtype(pl.NUMERIC_DTYPES)\
-        .pct_change().over(cols).mul(100).round(1)\
+        .pct_change().over( cols ).mul(100).round(1)\
         .name.prefix("pct_change_") )
             
-        st.session_state.acq_kpis[ period_labels[i] ] = kpis.collect().lazy()
+        st.session_state.acq_kpis[ period_labels[i] ] = kpis#.sort(by = 'date').collect()
 
     
        
@@ -348,7 +348,7 @@ if 'trxn_kpis' not in st.session_state:
     st.session_state.trxn_kpis = {}
 
     cols = [   'country' , 'service' ,'trxn_type'   ]
-
+    trxns = st.session_state.pdf.filter( ~ pl.col('trxn_type').is_in(['signup' ,'reject']) ).cache()
     for i , period in enumerate( period_cols ):
         print(period)
         print ()
@@ -359,7 +359,7 @@ if 'trxn_kpis' not in st.session_state:
         )
 
         kpis = [ 
-            st.session_state.pdf.filter( ~ pl.col('trxn_type').is_in(['signup' ,'reject']) ).group_by(  [*x , period]  ).agg( 
+            trxns.group_by(  pl.col( [*x , period] ) , maintain_order = True ).agg( 
                 pl.col('user_id').n_unique().alias( 'U')
                 , pl.col('trxn_id').count().alias(  'T')
                 , pl.col('tpv').sum().alias(  'TPV')
@@ -367,7 +367,7 @@ if 'trxn_kpis' not in st.session_state:
             ) for x in combs 
         ] 
         kpis = pl.concat(kpis , how= 'diagonal')
-        kpis = kpis.with_columns(pl.col(cols).fill_null('all')).sort( by = cols  + [ period ])
+        kpis = kpis.with_columns(pl.col(cols).fill_null('all')).sort( pl.col(  period ) ) 
         kpis = kpis.rename({period : 'date'})
         
     #     if period != None :
@@ -384,21 +384,21 @@ if 'trxn_kpis' not in st.session_state:
             , pl.col("T").cum_sum().over([ 'service' ,'trxn_type' , 'country']).alias("cum_T")
         )
         
-        kpis = kpis.with_columns(
-            ( pl.col(  'T') / pl.col(  'U') ).alias(  'TpU')
-            , ( pl.col(  'cum_T') / pl.col(  'cum_U') ).alias(  'cum_TpU')
-            , ( pl.col(  'TPV') / pl.col(  'U') ).alias(  'TPVpU')
-            , ( pl.col(  'TPV') / pl.col(  'T') ).alias(  'TPVpT')
-            , ( pl.col(  'DUM') / pl.col(  'U') ).alias(  'DUMpU')
-            , ( pl.col(  'DUM') / pl.col(  'T') ).alias(  'DUMpT')
-        )
+        # kpis = kpis.with_columns(
+        #     ( pl.col(  'T') / pl.col(  'U') ).alias(  'TpU')
+        #     , ( pl.col(  'cum_T') / pl.col(  'cum_U') ).alias(  'cum_TpU')
+        #     , ( pl.col(  'TPV') / pl.col(  'U') ).alias(  'TPVpU')
+        #     , ( pl.col(  'TPV') / pl.col(  'T') ).alias(  'TPVpT')
+        #     , ( pl.col(  'DUM') / pl.col(  'U') ).alias(  'DUMpU')
+        #     , ( pl.col(  'DUM') / pl.col(  'T') ).alias(  'DUMpT')
+        # )
         
         kpis = kpis.with_columns(
         pl.selectors.by_dtype(pl.NUMERIC_DTYPES)\
         .pct_change().over(cols).mul(100).round(1)\
         .name.prefix("pct_change_") )
         
-        st.session_state.trxn_kpis[ period_labels[i] ] = kpis
+        st.session_state.trxn_kpis[ period_labels[i] ] = kpis#.sort(by = 'date').collect()
 
 # =============================================================================
 # Feature Extraction - Due KPIs
@@ -410,6 +410,7 @@ if 'due_kpis' not in st.session_state:
     st.session_state.due_kpis = {}
 
     cols = [  'service' ,'trxn_type' , 'country'  ]
+    dues = st.session_state.pdf.filter( ~ pl.col('trxn_type').is_in(['signup' ,'reject']) )#.sort( pl.col('mdate')).cache()
 
     for i , period in enumerate( period_cols ):
         
@@ -422,14 +423,14 @@ if 'due_kpis' not in st.session_state:
         )
 
         kpis = [ 
-            st.session_state.pdf.filter( ~ pl.col('trxn_type').is_in(['signup' ,'reject']) ).group_by(  [ *x , mperiod, period] ).agg( 
+            dues.group_by(  pl.col( [ *x , mperiod, period] ) , maintain_order = True).agg( 
                 pl.col('user_id').n_unique().alias( 'U')
                 , pl.col('trxn_id').n_unique().alias(  'T')
                 , pl.col('atpv').sum().alias(  'ATPV')
             ) for x in combs 
         ] 
         kpis = pl.concat(kpis , how= 'diagonal')
-        kpis = kpis.with_columns(pl.col(cols).fill_null('all')).sort( by = cols  + [ mperiod , period ])
+        kpis = kpis.with_columns(pl.col(cols).fill_null('all')).sort( pl.col( [mperiod , period ]) )
         kpis = kpis.rename({mperiod : 'mdate' , period : 'date'})
         
     #     if period != None :
@@ -440,31 +441,31 @@ if 'due_kpis' not in st.session_state:
         
         
         kpis = kpis.with_columns(
-            pl.col([ 'mdate', 'date', 'service' ,'trxn_type' , 'country'  ])
-            , pl.col("ATPV").cum_sum().over([ 'mdate' , 'service' ,'trxn_type' , 'country']).alias("DD")#.mul(-1)
+            pl.col([ 'mdate', 'date', *cols ])
+            , pl.col("ATPV").cum_sum().over([ 'mdate' ,  *cols ]).alias("DD")#.mul(-1)
         )
         
-        kpis = kpis.with_columns(
-            ( pl.col(  'T') / pl.col(  'U') ).alias(  'TpU')
-            , ( pl.col(  'DD') / pl.col(  'U') ).alias(  'DDpU')
-            , ( pl.col(  'DD') / pl.col(  'T') ).alias(  'DDpT')
-        )
+        # kpis = kpis.with_columns(
+        #     ( pl.col(  'T') / pl.col(  'U') ).alias(  'TpU')
+        #     , ( pl.col(  'DD') / pl.col(  'U') ).alias(  'DDpU')
+        #     , ( pl.col(  'DD') / pl.col(  'T') ).alias(  'DDpT')
+        # )
 
         
-        st.session_state.due_kpis[ period_labels[i] ] = kpis
+        st.session_state.due_kpis[ period_labels[i] ] = kpis#.sort(by = ['mdate', 'date']).collect()
 
 
 # =============================================================================
 # Let's Go
 # =============================================================================
 # if 'trxns' not in st.session_state:
-trxns = st.session_state.trxn_kpis[freq].sort(by = 'date').collect()
+trxns = st.session_state.trxn_kpis[freq].collect()
 
 # if 'dues' not in st.session_state:
-dues = st.session_state.due_kpis[freq].sort(by = ['mdate', 'date']).collect()
+dues = st.session_state.due_kpis[freq].collect()
 
 # if 'acqs' not in st.session_state:
-acqs = st.session_state.acq_kpis[freq].sort(by = 'date').collect()
+acqs = st.session_state.acq_kpis[freq].collect()
 
 if trxns.is_empty() or dues.is_empty():
     st.write('No Transaction Occured During This Interval.')
@@ -495,16 +496,12 @@ else:
         (pl.col('country').is_in(country)  )
         & ( pl.col('trxn_type').is_in(trxn_type)  ) 
         & ( pl.col('service').is_in(service))
-    ).sort('date')
+    )#.sort('date')
     
     last = data.select( pl.all().last() )
     DUM ,DUM_chng    = last.select( pl.col(['DUM', 'pct_change_DUM']) ).row(0)
     
     DUM = round(DUM * B_frac, 2) 
-    # st.write(DUM_chng)
-    # if DUM_chng == None:
-    #     st.write('yes')
-    # DUM_chng = round(DUM_chng , 1)
     
     
     metric_cols[0].metric(
@@ -528,7 +525,7 @@ else:
         (pl.col('country').is_in(country)  )
         & ( pl.col('trxn_type').is_in(trxn_type)  ) 
         & ( pl.col('service').is_in(service))
-    ).sort('date')
+    )#.sort('date')
     
     last = data.select( pl.all().last() )
     NACC ,NACC_chng    = last.select( pl.col(['T', 'pct_change_T']) ).row(0)
@@ -555,9 +552,9 @@ else:
         (pl.col('country').is_in(country)  )
         & ( pl.col('trxn_type').is_in(trxn_type)  ) 
         & ( pl.col('service').is_in(service))
-    ).sort('date').to_pandas()
+    )#.sort('date')
     # 
-    fig = px.ecdf( data, x= 'date' , y = "TPV" , color = 'service' ,   ecdfnorm=None, markers=True
+    fig = px.ecdf( data.to_pandas(), x= 'date' , y = "TPV" , color = 'service' ,   ecdfnorm=None, markers=True
                   , color_discrete_map= { 'all' : 'green' ,'Fixed14' : 'purple' , 'Flexible9' :'orange' , 'Locked14' : 'blue'}
     
                   , title= freq + ' Deposits under Management')
@@ -573,14 +570,12 @@ else:
 
     title_cols[1].title('Counter Metrics')
 
-
-
         
     due_data = dues.filter( pl.col('country') == 'all')\
     .filter( pl.col('trxn_type') == 'all')\
     .filter( pl.col('service') == 'all')\
     .filter ( pl.col('mdate') != pl.col('date') )\
-    .unique(subset='mdate', keep="last").sort( by = ['mdate','date'])
+    .unique(subset='mdate', keep="last")#.sort( pl.col(  ['mdate','date'] ) )
     
     cols = [  'service' ,'trxn_type' , 'country'  ]
     
@@ -588,7 +583,7 @@ else:
         pl.selectors.by_dtype(pl.NUMERIC_DTYPES)\
         .pct_change().over(cols).mul(100).round(1)\
         .name.prefix("pct_change_") 
-        ).sort( by = ['mdate','date'])
+        )#.sort( pl.col(  ['mdate','date']) )
     
     last = due_data.filter( 
         pl.col('mdate') > pl.col('date').max()
@@ -622,7 +617,7 @@ else:
         (pl.col('country').is_in(country)  )
         & ( pl.col('trxn_type').is_in(trxn_type)  ) 
         & ( pl.col('service').is_in(service))
-    ).sort('date')
+    )#.sort('date')
     
     last = data.select( pl.all().last() )
     DACC ,DACC_chng    = last.select( pl.col(['T', 'pct_change_T']) ).row(0)
