@@ -29,7 +29,7 @@ st.title(':chart_with_upwards_trend: GTM Dashboard')
 st.write('The Main Go-to-Market Dashboard for a New Deposit Service in Digital Banking')
 st.write('Implemented by Polars for Maximum Performance ( 10-100 faster than Pandas ) on a Single Cluster.')
 st.write('Keywords: Dashboard, GTM Strategy, Python (Polars, Streamlit, Dash, Plotly)')
-st.write('Note: Although it is implemented in Polars, it's on a public server; so from time to time ETL could be slow')
+st.write("""Note: Although it is implemented in Polars, it's on a public server; so from time to time ETL could be slow""")
 
 st.markdown('<style> div.block-container{padding-top:1rem;}</style>', unsafe_allow_html = True)
 
