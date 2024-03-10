@@ -194,7 +194,7 @@ with st.expander("Filters:"):
             st.session_state.first_day_filter , st.session_state.last_day_filter = dates
     
     analysis_duration = (st.session_state.last_day_filter - st.session_state.first_day_filter).days + 1
-    freq_condition = [91 , 32, 8 , 1]
+    freq_condition = [180 , 60, 14 , 1]
     freq_condition = sum([ (analysis_duration//x) > 0 for x in freq_condition]) * -1
 
     freq = cols[0].selectbox('Frequency', period_labels[freq_condition:], index= 0  )
