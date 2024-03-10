@@ -159,47 +159,47 @@ period_index = { x: i for i ,x in enumerate(period_labels)}
 
 with st.expander("Filters:"):
     
-    cols = st.columns(5)
+    cols = st.columns(4)
     
     
-    date_container = cols[1].container()
-    all_dates = cols[1].checkbox("Whole Period",value=1 )
+    # date_container = cols[1].container()
+    # all_dates = cols[1].checkbox("Whole Period",value=1 )
     
-    if 'first_day_filter' not in st.session_state:
-        st.session_state['first_day_filter'] = first_day
+    # if 'first_day_filter' not in st.session_state:
+    #     st.session_state['first_day_filter'] = first_day
     
-    if 'last_day_filter' not in st.session_state:
-        st.session_state['last_day_filter'] = last_day
+    # if 'last_day_filter' not in st.session_state:
+    #     st.session_state['last_day_filter'] = last_day
     
-    # first_day_filter , last_day_filter = first_day , last_day
+    # # first_day_filter , last_day_filter = first_day , last_day
     
-    if all_dates:
-        date_container.date_input(
-            'Analysis Interval'
-            , value= (first_day , last_day)
-            , min_value= first_day
-            ,  max_value= last_day
-            , disabled= True)
-        st.session_state['first_day_filter'] = first_day
-        st.session_state['last_day_filter'] = last_day
+    # if all_dates:
+    #     date_container.date_input(
+    #         'Analysis Interval'
+    #         , value= (first_day , last_day)
+    #         , min_value= first_day
+    #         ,  max_value= last_day
+    #         , disabled= True)
+    #     st.session_state['first_day_filter'] = first_day
+    #     st.session_state['last_day_filter'] = last_day
 
-    else:
-        dates = date_container.date_input(
-            'Analysis Interval'
-            , value= (first_day , last_day)
-            , min_value= first_day
-            ,  max_value= last_day
-        )
-        if len(dates) == 1:
-            st.session_state.first_day_filter = dates[0]
-        else:
-            st.session_state.first_day_filter , st.session_state.last_day_filter = dates
+    # else:
+    #     dates = date_container.date_input(
+    #         'Analysis Interval'
+    #         , value= (first_day , last_day)
+    #         , min_value= first_day
+    #         ,  max_value= last_day
+    #     )
+    #     if len(dates) == 1:
+    #         st.session_state.first_day_filter = dates[0]
+    #     else:
+    #         st.session_state.first_day_filter , st.session_state.last_day_filter = dates
     
-    analysis_duration = (st.session_state.last_day_filter - st.session_state.first_day_filter).days + 1
-    freq_condition = [180 , 60, 14 , 1]
-    freq_condition = sum([ (analysis_duration//x) > 0 for x in freq_condition]) * -1
-
-    freq = cols[0].selectbox('Frequency', period_labels[freq_condition:], index= 0  )
+    # analysis_duration = (st.session_state.last_day_filter - st.session_state.first_day_filter).days + 1
+    # freq_condition = [187 , 63, 15 , 1]
+    # freq_condition = sum([ (analysis_duration//x) > 0 for x in freq_condition]) * -1
+    freq_condition = 0
+    freq = cols[0].selectbox('Frequency', period_labels[freq_condition:], index= 1  )
     freq_index = period_index[freq]
     filtered_period_cols = [ period_cols[  freq_index ] ]
     
@@ -258,8 +258,8 @@ filter_pdf = st.session_state.pdf
 
 
 
-filter_pdf = filter_pdf.filter( pl.col('trxn_datetime') >= st.session_state.first_day_filter )
-filter_pdf = filter_pdf.filter( pl.col('trxn_datetime') <= st.session_state.last_day_filter )
+# filter_pdf = filter_pdf.filter( pl.col('trxn_datetime') >= st.session_state.first_day_filter )
+# filter_pdf = filter_pdf.filter( pl.col('trxn_datetime') <= st.session_state.last_day_filter )
 
 # not working with states cuase new feature extreaction is with state
 if len(selected_locations) > 0:
@@ -798,6 +798,7 @@ else:
     )
 
     trxn_pivot_clients = trxn_pivot.pivot(index = ['country' , 'service' ,'date' ]  , columns = 'trxn_type' , values = 'U').fill_null(0)
+    
     trxn_pivot_clients = trxn_pivot_clients.with_columns(
         pl.sum_horizontal(['mature','break']).alias('churned')
     )
