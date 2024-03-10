@@ -180,7 +180,9 @@ with st.expander("Filters:"):
             , min_value= first_day
             ,  max_value= last_day
             , disabled= True)
-        # first_day_filter , last_day_filter = first_day , last_day
+        st.session_state['first_day_filter'] = first_day
+        st.session_state['last_day_filter'] = last_day
+
     else:
         dates = date_container.date_input(
             'Analysis Interval'
