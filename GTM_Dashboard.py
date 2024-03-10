@@ -749,7 +749,13 @@ else:
 
 
     # #####################
-    trxn_pivot_clients = trxns.pivot(index = ['country' , 'service' ,'date' ]  , columns = 'trxn_type' , values = 'U').fill_null(0)
+
+    trxn_pivot = trxns.filter( 
+        (pl.col('country') == 'all')
+        & (pl.col('service') == 'all')
+    )
+
+    trxn_pivot_clients = trxn_pivot.pivot(index = ['country' , 'service' ,'date' ]  , columns = 'trxn_type' , values = 'U').fill_null(0)
     trxn_pivot_clients = trxn_pivot_clients.with_columns(
         pl.sum_horizontal(['mature','break']).alias('churned')
     )
@@ -770,29 +776,7 @@ else:
     
     
     # #####################    
-    trxn_pivot_accounts = trxns.pivot(index = ['country' , 'service' ,'date' ]  , columns = 'trxn_type' , values = 'T').fill_null(0)
-    trxn_pivot_accounts = trxn_pivot_accounts.with_columns(
-        pl.sum_horizontal(['mature','break']).alias('churned')
-    )
-    
-    trxn_pivot_accounts = trxn_pivot_accounts.with_columns(
-        ( pl.col('open') - pl.col('churned') ).alias('active')
-    )
-    
-    trxn_pivot_accounts = trxn_pivot_accounts.with_columns(
-            pl.col([  'service'  , 'country' , 'date'  ])
-            , pl.selectors.by_dtype(pl.NUMERIC_DTYPES ).cum_sum().over([  'service'  , 'country' ]).name.prefix("cum_")
-        )
-    
-    trxn_pivot_accounts = trxn_pivot_accounts.with_columns(
-        pl.selectors.by_dtype(pl.NUMERIC_DTYPES)\
-        .pct_change().over(['country' , 'service']).mul(100).round(1)\
-        .name.prefix("pct_change_") )
-    
-    
-        
-    # #####################    
-    trxn_pivot_accounts = trxns.pivot(index = ['country' , 'service' ,'date' ]  , columns = 'trxn_type' , values = 'T').fill_null(0)
+    trxn_pivot_accounts = trxn_pivot.pivot(index = ['country' , 'service' ,'date' ]  , columns = 'trxn_type' , values = 'T').fill_null(0)
     trxn_pivot_accounts = trxn_pivot_accounts.with_columns(
         pl.sum_horizontal(['mature','break']).alias('churned')
     )
@@ -813,7 +797,7 @@ else:
     
     # #####################    
         
-    trxn_pivot_deposits = trxns.pivot(index = ['country' , 'service' ,'date' ]  , columns = 'trxn_type' , values = 'ATPV')
+    trxn_pivot_deposits = trxn_pivot.pivot(index = ['country' , 'service' ,'date' ]  , columns = 'trxn_type' , values = 'ATPV')
     trxn_pivot_deposits = trxn_pivot_deposits.with_columns(
         pl.sum_horizontal(['withdraw','mature','break']).abs().alias('lost')
         , pl.sum_horizontal(['open','top_up']).alias('gained')
@@ -837,23 +821,12 @@ else:
     
     # #####################  
     
-    trxn_pivot_clients = trxn_pivot_clients.filter( pl.col('date') == pl.col('date').max() )
-    trxn_pivot_clients = trxn_pivot_clients.filter( 
-        (pl.col('country') == 'all')
-        & (pl.col('service') == 'all')
-    ).tail(1)
+    trxn_pivot_clients = trxn_pivot_clients.filter( pl.col('date') == pl.col('date').max() ).tail(1)
     
-    trxn_pivot_accounts = trxn_pivot_accounts.filter( pl.col('date') == pl.col('date').max() )
-    trxn_pivot_accounts = trxn_pivot_accounts.filter( 
-        (pl.col('country') == 'all')
-        & (pl.col('service') == 'all')
-    ).tail(1)
+    trxn_pivot_accounts = trxn_pivot_accounts.filter( pl.col('date') == pl.col('date').max() ).tail(1)
     
-    trxn_pivot_deposits = trxn_pivot_deposits.filter( pl.col('date') == pl.col('date').max() )
-    trxn_pivot_deposits = trxn_pivot_deposits.filter( 
-        (pl.col('country') == 'all')
-        & (pl.col('service') == 'all')
-    ).tail(1)
+    trxn_pivot_deposits = trxn_pivot_deposits.filter( pl.col('date') == pl.col('date').max() ).tail(1)
+    
     # #####################
     
     active_clients , active_clients_chng = trxn_pivot_clients.select(['cum_active','pct_change_cum_active']).row(-1)    
@@ -1027,7 +1000,8 @@ else:
     acq_cols[3].title("")
     acq_cols[3].title("")
     
-    acq_pivot = acqs.pivot(index = ['country' , 'channel' ,'date' ]  , columns = 'verified' , values = 'U').fill_null(0)
+    acq_pivot = acqs.filter( ( pl.col('country') == 'all' ) & ( pl.col('channel') == 'all' ) )
+    acq_pivot = acq_pivot.pivot(index = ['country' , 'channel' ,'date' ]  , columns = 'verified' , values = 'U').fill_null(0)
 
     acq_pivot = acq_pivot.with_columns(
         ( pl.col('Yes') / pl.col('all') ).alias('CR')
@@ -1037,20 +1011,16 @@ else:
         pl.selectors.by_dtype(pl.NUMERIC_DTYPES)\
         .pct_change().over(['country' , 'channel']).mul(100).round(1)\
         .name.prefix("pct_change_") )
-        
-        
     
     acq_pivot = acq_pivot.filter( pl.col('date') == pl.col('date').max() )
-    acq_pivot = acq_pivot.filter( pl.col('country') == 'all' )
-    acq_pivot = acq_pivot.filter( pl.col('channel') == 'all' )
-
-
+    
     data = acqs
     
-    data = data.filter( pl.col('date') == pl.col('date').max() )
-    data = data.filter( pl.col('country') == 'all' )
-    data = data.filter( pl.col('channel') == 'all' )
-    
+    data = data.filter( 
+        ( pl.col('country') == 'all' ) 
+        & ( pl.col('channel') == 'all' ) 
+        & ( pl.col('date') == pl.col('date').max() )
+    )
     qualified_leads ,qualified_leads_chng , A_TAT , A_TAT_chng , A_CAC , A_CAC_chng= data.filter(
         pl.col('verified') == 'all' ).select(
             ['U' , 'pct_change_U', 'A_TAT', 'pct_change_A_TAT' , 'A_CAC', 'pct_change_A_CAC']).row(0)
