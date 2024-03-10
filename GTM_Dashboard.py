@@ -74,7 +74,7 @@ B_frac = 10**(-9)
 # =============================================================================
 
 if 'pdf' not in st.session_state:
-    st.session_state.pdf = pl.scan_csv('deposit_accounts.csv')
+    st.session_state['pdf'] = pl.scan_csv('deposit_accounts.csv')
 
 
     st.session_state.pdf =  st.session_state.pdf.with_columns(pl.col("population") * M_frac)
