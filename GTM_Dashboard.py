@@ -152,56 +152,64 @@ mperiod_cols= [ 'm'+x  for x in period_cols ]
 
 period_prefixes = [  'Q' , 'M' , 'W', 'D' ]
 period_labels = [  'Quarterly' , 'Monthly' , 'Weekly' , 'Daily' ]
-preiod_index = { x: i for i ,x in enumerate(period_labels)}
+period_index = { x: i for i ,x in enumerate(period_labels)}
 
 
 
 with st.expander("Filters:"):
     
-    cols = st.columns(4)
+    cols = st.columns(5)
     
     
-    # date_container = cols[0].container()
-    # all_dates = cols[0].checkbox("Whole Period",value=1 )
+    date_container = cols[1].container()
+    all_dates = cols[1].checkbox("Whole Period",value=1 )
+    
+    if 'first_day_filter' not in st.session_state:
+        st.session_state['first_day_filter'] = first_day
+    
+    if 'last_day_filter' not in st.session_state:
+        st.session_state['last_day_filter'] = last_day
+    
     # first_day_filter , last_day_filter = first_day , last_day
     
-    # if all_dates:
-    #     date_container.date_input(
-    #         'Analysis Interval'
-    #         , value= (first_day , last_day)
-    #         , min_value= first_day
-    #         ,  max_value= last_day
-    #         , disabled= True)
-    #     # first_day_filter , last_day_filter = first_day , last_day
-    # else:
-    #     dates = date_container.date_input(
-    #         'Analysis Interval'
-    #         , value= (first_day , last_day)
-    #         , min_value= first_day
-    #         ,  max_value= last_day
-    #     )
-    #     if len(dates) == 1:
-    #         first_day_filter = dates[0]
-    #     else:
-    #         first_day_filter , last_day_filter = dates
+    if all_dates:
+        date_container.date_input(
+            'Analysis Interval'
+            , value= (first_day , last_day)
+            , min_value= first_day
+            ,  max_value= last_day
+            , disabled= True)
+        # first_day_filter , last_day_filter = first_day , last_day
+    else:
+        dates = date_container.date_input(
+            'Analysis Interval'
+            , value= (first_day , last_day)
+            , min_value= first_day
+            ,  max_value= last_day
+        )
+        if len(dates) == 1:
+            st.session_state.first_day_filter = dates[0]
+        else:
+            st.session_state.first_day_filter , st.session_state.last_day_filter = dates
+    
+    analysis_duration = (st.session_state.last_day_filter - st.session_state.first_day_filter).days + 1
+    freq_condition = [91 , 32, 8 , 1]
+    freq_condition = sum([ (analysis_duration//x) > 0 for x in freq_condition]) * -1
+
+    freq = cols[0].selectbox('Frequency', period_labels[freq_condition:], index= 0  )
+    freq_index = period_index[freq]
+    filtered_period_cols = [ period_cols[  freq_index ] ]
     
     
-    
-    freq = cols[-4].selectbox('Frequency', period_labels, index= 1  )
-    freq_index = preiod_index[freq]
-    
-    
-    
-    # last_day_filter = cols[1].date_input(
+    # st.session_state.last_day_filter = cols[1].date_input(
     #     'Analysis Closing Date'
     #     , value=  last_day
     #     , min_value= first_day
     #     ,  max_value= last_day
     # )
     
-    if 'country_list' not in st.session_state:
-        country_list = st.session_state.pdf.select('country').unique().collect().to_pandas()['country'].sort_values().tolist()
 
+    country_list = st.session_state.pdf.select('country').unique().collect().to_pandas()['country'].sort_values().tolist()
     location_container = cols[-3].container()
     all_countries = cols[-3].checkbox("All Locations",value=1 )
     selected_locations = []
@@ -243,12 +251,13 @@ with st.expander("Filters:"):
 # Appling Filters
 # =============================================================================
 
-
-# st.session_state.pdf = st.session_state.pdf.filter( pl.col('trxn_datetime') >= first_day_filter )
-# st.session_state.pdf = st.session_state.pdf.filter( pl.col('trxn_datetime') <= last_day_filter )
-
-
 filter_pdf = st.session_state.pdf
+
+
+
+filter_pdf = filter_pdf.filter( pl.col('trxn_datetime') >= st.session_state.first_day_filter )
+filter_pdf = filter_pdf.filter( pl.col('trxn_datetime') <= st.session_state.last_day_filter )
+
 # not working with states cuase new feature extreaction is with state
 if len(selected_locations) > 0:
     filter_pdf = filter_pdf.filter( pl.col('country').is_in( selected_locations))
@@ -298,7 +307,7 @@ acq_kpis = {}
 signups = filter_pdf.filter( pl.col('trxn_type').is_in( ['signup' ] ) )
 cols = [   'country'  ,'channel', 'verified']
 
-for i , period in enumerate( period_cols ):
+for  period in  filtered_period_cols :
     
     
     combs = itertools.chain.from_iterable(
@@ -330,7 +339,7 @@ for i , period in enumerate( period_cols ):
     .pct_change().over( cols ).mul(100).round(1)\
     .name.prefix("pct_change_") )
         
-    acq_kpis[ period_labels[i] ] = kpis#.sort(by = 'date').collect()
+    acq_kpis[ period_labels[freq_index] ] = kpis#.sort(by = 'date').collect()
 
     
        
@@ -346,7 +355,7 @@ trxn_kpis = {}
 
 cols = [   'country' , 'service' ,'trxn_type'   ]
 trxns = filter_pdf.filter( ~ pl.col('trxn_type').is_in(['signup' ,'reject']) ).cache()
-for i , period in enumerate( period_cols ):
+for  period in filtered_period_cols :
     print(period)
     print ()
     
@@ -395,7 +404,7 @@ for i , period in enumerate( period_cols ):
     .pct_change().over(cols).mul(100).round(1)\
     .name.prefix("pct_change_") )
     
-    trxn_kpis[ period_labels[i] ] = kpis#.sort(by = 'date').collect()
+    trxn_kpis[ period_labels[freq_index] ] = kpis#.sort(by = 'date').collect()
 
 # =============================================================================
 # Feature Extraction - Due KPIs
@@ -409,7 +418,7 @@ due_kpis = {}
 cols = [  'service' ,'trxn_type' , 'country'  ]
 dues = filter_pdf.filter( ~ pl.col('trxn_type').is_in(['signup' ,'reject']) )#.sort( pl.col('mdate')).cache()
 
-for i , period in enumerate( period_cols ):
+for period in filtered_period_cols:
     
     print(period)
     print ()
@@ -449,7 +458,7 @@ for i , period in enumerate( period_cols ):
     # )
 
     
-    due_kpis[ period_labels[i] ] = kpis#.sort(by = ['mdate', 'date']).collect()
+    due_kpis[ period_labels[freq_index] ] = kpis#.sort(by = ['mdate', 'date']).collect()
 
 
 # =============================================================================
@@ -827,7 +836,7 @@ else:
     
     # #####################    
         
-    trxn_pivot_deposits = trxn_pivot.pivot(index = ['country' , 'service' ,'date' ]  , columns = 'trxn_type' , values = 'ATPV')
+    trxn_pivot_deposits = trxn_pivot.pivot(index = ['country' , 'service' ,'date' ]  , columns = 'trxn_type' , values = 'ATPV').fill_null(0)
     trxn_pivot_deposits = trxn_pivot_deposits.with_columns(
         pl.sum_horizontal(['withdraw','mature','break']).abs().alias('lost')
         , pl.sum_horizontal(['open','top_up']).alias('gained')
