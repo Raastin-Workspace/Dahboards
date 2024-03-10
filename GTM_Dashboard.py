@@ -158,7 +158,7 @@ period_labels = [  'Quarterly' , 'Monthly' , 'Weekly' , 'Daily' ]
 preiod_index = { x: i for i ,x in enumerate(period_labels)}
 
 
-
+freq = 'Monthly'
 # with st.expander("Filters:"):
         
     # cols = st.columns(4)
