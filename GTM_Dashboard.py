@@ -158,116 +158,116 @@ period_labels = [  'Quarterly' , 'Monthly' , 'Weekly' , 'Daily' ]
 preiod_index = { x: i for i ,x in enumerate(period_labels)}
 
 
-freq = 'Monthly'
-# with st.expander("Filters:"):
+# freq = 'Monthly'
+with st.expander("Filters:"):
         
-    # cols = st.columns(4)
+    cols = st.columns(4)
     
     
-    # # date_container = cols[0].container()
-    # # all_dates = cols[0].checkbox("Whole Period",value=1 )
-    # # first_day_filter , last_day_filter = first_day , last_day
+    # date_container = cols[0].container()
+    # all_dates = cols[0].checkbox("Whole Period",value=1 )
+    # first_day_filter , last_day_filter = first_day , last_day
     
-    # # if all_dates:
-    # #     date_container.date_input(
-    # #         'Analysis Interval'
-    # #         , value= (first_day , last_day)
-    # #         , min_value= first_day
-    # #         ,  max_value= last_day
-    # #         , disabled= True)
-    # #     # first_day_filter , last_day_filter = first_day , last_day
-    # # else:
-    # #     dates = date_container.date_input(
-    # #         'Analysis Interval'
-    # #         , value= (first_day , last_day)
-    # #         , min_value= first_day
-    # #         ,  max_value= last_day
-    # #     )
-    # #     if len(dates) == 1:
-    # #         first_day_filter = dates[0]
-    # #     else:
-    # #         first_day_filter , last_day_filter = dates
-    
-    
-    
-    # freq = cols[-4].selectbox('Frequency', period_labels, index= 1  )
-    # freq_index = preiod_index[freq]
+    # if all_dates:
+    #     date_container.date_input(
+    #         'Analysis Interval'
+    #         , value= (first_day , last_day)
+    #         , min_value= first_day
+    #         ,  max_value= last_day
+    #         , disabled= True)
+    #     # first_day_filter , last_day_filter = first_day , last_day
+    # else:
+    #     dates = date_container.date_input(
+    #         'Analysis Interval'
+    #         , value= (first_day , last_day)
+    #         , min_value= first_day
+    #         ,  max_value= last_day
+    #     )
+    #     if len(dates) == 1:
+    #         first_day_filter = dates[0]
+    #     else:
+    #         first_day_filter , last_day_filter = dates
     
     
     
-    # # last_day_filter = cols[1].date_input(
-    # #     'Analysis Closing Date'
-    # #     , value=  last_day
-    # #     , min_value= first_day
-    # #     ,  max_value= last_day
-    # # )
+    freq = cols[-4].selectbox('Frequency', period_labels, index= 1  )
+    freq_index = preiod_index[freq]
     
     
-    # country_list = st.session_state.pdf.select('country').unique().collect().to_pandas()['country']#.sort_values().tolist()
-    # location_container = cols[-3].container()
-    # all_countries = cols[-3].checkbox("All Locations",value=1 )
-    # selected_locations = []
+    
+    # last_day_filter = cols[1].date_input(
+    #     'Analysis Closing Date'
+    #     , value=  last_day
+    #     , min_value= first_day
+    #     ,  max_value= last_day
+    # )
+    
+    
+    country_list = st.session_state.pdf.select('country').unique().collect().to_pandas()['country']#.sort_values().tolist()
+    location_container = cols[-3].container()
+    all_countries = cols[-3].checkbox("All Locations",value=1 )
+    selected_locations = []
      
-    # if all_countries:
-    #     location_container.multiselect("Locations:",
-    #          ['All'],['All'] , disabled= True)
-    #     selected_locations = country_list
-    # else:
-    #     selected_locations =  location_container.multiselect("Locations:",
-    #         country_list)
+    if all_countries:
+        location_container.multiselect("Locations:",
+             ['All'],['All'] , disabled= True)
+        selected_locations = country_list
+    else:
+        selected_locations =  location_container.multiselect("Locations:",
+            country_list)
         
-    # service_list = st.session_state.pdf.select('service').unique().collect().to_pandas().dropna()['service']#.sort_values().tolist()
-    # service_container = cols[-2].container()
-    # all_services = cols[-2].checkbox("All Services",value=1 )
-    # selected_services = []
-    # if all_services:
-    #     service_container.multiselect("Services:",
-    #          ['All'],['All'] , disabled= True)
-    #     selected_services = service_list
+    service_list = st.session_state.pdf.select('service').unique().collect().to_pandas().dropna()['service']#.sort_values().tolist()
+    service_container = cols[-2].container()
+    all_services = cols[-2].checkbox("All Services",value=1 )
+    selected_services = []
+    if all_services:
+        service_container.multiselect("Services:",
+             ['All'],['All'] , disabled= True)
+        selected_services = service_list
     
-    # else:
-    #     selected_services =  service_container.multiselect("Services:",
-    #         service_list)
+    else:
+        selected_services =  service_container.multiselect("Services:",
+            service_list)
         
-    # channel_list = st.session_state.pdf.select('channel').unique().collect().to_pandas().dropna()['channel']#.sort_values().tolist()
-    # channel_container = cols[-1].container()
-    # all_channels = cols[-1].checkbox("All Channels",value=1 )
-    # selected_channels = []
-    # if all_channels:
-    #     channel_container.multiselect("Channels:",
-    #          ['All'],['All'] , disabled= True)
-    #     selected_channels = channel_list
+    channel_list = st.session_state.pdf.select('channel').unique().collect().to_pandas().dropna()['channel']#.sort_values().tolist()
+    channel_container = cols[-1].container()
+    all_channels = cols[-1].checkbox("All Channels",value=1 )
+    selected_channels = []
+    if all_channels:
+        channel_container.multiselect("Channels:",
+             ['All'],['All'] , disabled= True)
+        selected_channels = channel_list
     
-    # else:
-    #     selected_channels =  channel_container.multiselect("Channels:",
-    #         channel_list)
+    else:
+        selected_channels =  channel_container.multiselect("Channels:",
+            channel_list)
 # =============================================================================
 # Appling Filters
 # =============================================================================
 
 
-# # st.session_state.pdf = st.session_state.pdf.filter( pl.col('trxn_datetime') >= first_day_filter )
-# # st.session_state.pdf = st.session_state.pdf.filter( pl.col('trxn_datetime') <= last_day_filter )
+# st.session_state.pdf = st.session_state.pdf.filter( pl.col('trxn_datetime') >= first_day_filter )
+# st.session_state.pdf = st.session_state.pdf.filter( pl.col('trxn_datetime') <= last_day_filter )
 
-# # st.dataframe(st.session_state.pdf.sort('trxn_datetime').collect())
+# st.dataframe(st.session_state.pdf.sort('trxn_datetime').collect())
 
   
     
-# if len(selected_locations) > 0:
-#     st.session_state.pdf = st.session_state.pdf.filter( pl.col('country').is_in( selected_locations))
+if len(selected_locations) > 0:
+    st.session_state.pdf = st.session_state.pdf.filter( pl.col('country').is_in( selected_locations))
 
-# # null is added to keep signups in the data
-# if len(selected_services) > 0:
-#     st.session_state.pdf = st.session_state.pdf.filter(
-#         pl.col('service').is_in( selected_services ) \
-#             | pl.col('service').is_null()
-#             )
-# if len(selected_channels) > 0:
-#     st.session_state.pdf = st.session_state.pdf.filter( pl.col('channel').is_in( selected_channels))
+# null is added to keep signups in the data
+if len(selected_services) > 0:
+    st.session_state.pdf = st.session_state.pdf.filter(
+        pl.col('service').is_in( selected_services ) \
+            | pl.col('service').is_null()
+            )
+if len(selected_channels) > 0:
+    st.session_state.pdf = st.session_state.pdf.filter( pl.col('channel').is_in( selected_channels))
 
 
-# # st.write(selected_services + [ None ])
-# # st.dataframe(st.session_state.pdf.sort('trxn_datetime').collect())
+# st.write(selected_services + [ None ])
+# st.dataframe(st.session_state.pdf.sort('trxn_datetime').collect())
 
 
 # =============================================================================
