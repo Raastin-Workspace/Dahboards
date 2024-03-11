@@ -1231,7 +1231,8 @@ else:
         coloraxis_colorbar={"title": 'Penetration Rate' }
     )
     fig.update_traces(textposition='top center')
-    fig.update_traces(textfont_color='black' , textfont_size = 9)
+    # fig.update_traces(textfont_color='black' , textfont_size = 9)
+    fig.update_traces(textfont_size = 9)
 
     expansion_cols[0].plotly_chart(fig , use_container_width=True)
 
@@ -1364,7 +1365,8 @@ else:
         coloraxis_colorbar={"title": 'Penetration Rate' }
     )
     fig.update_traces(textposition='top center')
-    fig.update_traces(textfont_color='black' , textfont_size = 9)
+    fig.update_traces( textfont_size = 9)
+    # fig.update_traces(textfont_color='black' , textfont_size = 9)
 
     st.plotly_chart(fig , use_container_width=True)
 
