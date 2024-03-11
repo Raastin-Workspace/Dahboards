@@ -655,8 +655,6 @@ else:
     )
     
 
-    st.dataframe(trxn_data_plot)
-
     time_axis = trxn_data_plot.select( pl.col('date').unique() ).to_series().to_list()
     time_axis_sorted = sorted(time_axis) 
     fig = px.ecdf( trxn_data_plot.to_pandas().sort_values('date')
@@ -882,8 +880,6 @@ else:
         & ( pl.col('trxn_type') == 'renew')
     ) )
     
-
-    st.dataframe(health_renew)
 
     active_clients , active_clients_chng = health_all.select(['ACTIVE_U','pct_change_ACTIVE_U']).row(-1)    
     churned_clients , churned_clients_chng = health_churn.select(['U_DCT','pct_change_U_DCT']).row(-1)
