@@ -68,6 +68,11 @@ K_frac = 10**(-3)
 M_frac = 10**(-6)
 B_frac = 10**(-9)
 
+def metric_check( df ):
+    if df.is_empty():
+        return df.clear(1).fill_null(0)
+    else:
+        return df
 #
 # =============================================================================
 # 
@@ -194,6 +199,12 @@ if 'pdf' not in st.session_state:
 
 
 #
+
+if 'time_frame' not in st.session_state:
+    st.session_state.time_frame = st.session_state.pdf.select(
+        pl.col( ['date','week' ,'month' , 'quarter' , 'year'] ).unique()
+    )
+
 
 first_day = st.session_state.pdf.select('date').min().collect().to_series().min()
 last_day = st.session_state.pdf.select( 'date').max().collect().to_series().max()
@@ -598,9 +609,9 @@ else:
 
     trxn_last = trxn_data.filter( pl.col('date') == pl.col('date').max() )
     
-    DUM ,DUM_chng    = trxn_last.filter(
+    DUM ,DUM_chng    = metric_check( trxn_last.filter(
         pl.col('trxn_type') == 'all'  
-        ).select( pl.col(['DUM', 'pct_change_DUM']) ).row(0)
+        ) ).select( pl.col(['DUM', 'pct_change_DUM']) ).row(0)
 
     DUM = round(DUM * B_frac, 2) 
     
@@ -616,9 +627,11 @@ else:
         , delta_color= "normal" if DUM_chng!= None else "off"
     )
     # 
-    NACC ,NACC_chng = trxn_last.filter(
+    
+    
+    NACC ,NACC_chng = metric_check( trxn_last.filter(
         pl.col('trxn_type') == 'open'  
-        ).select( pl.col(['T', 'pct_change_T']) ).row(0)
+        ) ).select( pl.col(['T', 'pct_change_T']) ).row(0)
     NACC = round(NACC * K_frac, 2) 
     # NACC_chng = round(NACC_chng , 1)
     
@@ -637,14 +650,25 @@ else:
     trxn_data_plot = trxns.filter( 
         (pl.col('country') == 'all' )
         & ( pl.col('trxn_type') == 'all' )
-    ).sort(by = ['service' ,'date'])
+        & ( pl.col('trxn_group') == 'all' )
 
+    )
     
 
-    fig = px.ecdf( trxn_data_plot.to_pandas(), x= 'date' , y = "TPV" , color = 'service' ,   ecdfnorm=None, markers=True
+    st.dataframe(trxn_data_plot)
+
+    time_axis = trxn_data_plot.select( pl.col('date').unique() ).to_series().to_list()
+    time_axis_sorted = sorted(time_axis) 
+    fig = px.ecdf( trxn_data_plot.to_pandas().sort_values('date')
+                  , x= 'date' , y = "TPV" 
+                  , color = 'service' 
+                  ,   ecdfnorm=None
+                  , markers=True
                   , color_discrete_map= { 'all' : 'green' ,'Fixed14' : 'purple' , 'Flexible9' :'orange' , 'Locked14' : 'blue'}
-    
-                  , title= freq + ' Deposits under Management')
+                , category_orders = { 
+                    'date' : time_axis_sorted
+                }
+                , title= freq + ' Deposits under Management')
     fig.for_each_yaxis(lambda y: y.update(title = '€ DUM'))
     
     
@@ -677,9 +701,9 @@ else:
         pl.col('mdate') > pl.col('date').max()
         ).unique(subset='date', keep="first")
     
-    DD ,DD_chng    = due_last.filter(
+    DD ,DD_chng    = metric_check( due_last.filter(
         pl.col('trxn_type') == 'all'  
-        ).select( pl.col(['DD', 'pct_change_DD']) ).row(0)
+        ) ).select( pl.col(['DD', 'pct_change_DD']) ).row(0)
     DD = round(DD * M_frac, 1) 
     
     
@@ -699,9 +723,9 @@ else:
     # 
     
     
-    DACC ,DACC_chng = trxn_last.filter(
+    DACC ,DACC_chng = metric_check( trxn_last.filter(
         pl.col('trxn_type') == 'break'  
-        ).select( pl.col(['T', 'pct_change_T']) ).row(0)
+        ) ).select( pl.col(['T', 'pct_change_T']) ).row(0)
     DACC = round(DACC * K_frac, 2) 
     # DACC_chng = round(DACC_chng , 1)
     
@@ -841,24 +865,25 @@ else:
    
     )
     # health_data.with_columns( pl.col('trxn_type').replace([ 'break' , 'mature' , 'withdraw'] , 'churn') )
-    health_all = health_data.filter(
+    health_all = metric_check( health_data.filter(
         ( pl.col('trxn_group') == 'all' ) 
         & ( pl.col('trxn_type') == 'all')
-    )
-    health_open = health_data.filter(
+    ) )
+    health_open = metric_check( health_data.filter(
         ( pl.col('trxn_group') == 'all' ) 
         & ( pl.col('trxn_type') == 'open')
-    )
-    health_churn = health_data.filter(
+    ) )
+    health_churn = metric_check( health_data.filter(
         ( pl.col('trxn_group') == 'lose' ) 
         & ( pl.col('trxn_type') == 'all')
-    )
-    health_renew = health_data.filter(
+    ) )
+    health_renew = metric_check( health_data.filter(
         ( pl.col('trxn_group') == 'all' ) 
         & ( pl.col('trxn_type') == 'renew')
-    )
+    ) )
     
 
+    st.dataframe(health_renew)
 
     active_clients , active_clients_chng = health_all.select(['ACTIVE_U','pct_change_ACTIVE_U']).row(-1)    
     churned_clients , churned_clients_chng = health_churn.select(['U_DCT','pct_change_U_DCT']).row(-1)
@@ -1051,14 +1076,14 @@ else:
         & ( pl.col('channel') == 'all' ) 
         & ( pl.col('date') == pl.col('date').max() )
     )
-    qualified_leads ,qualified_leads_chng , A_TAT , A_TAT_chng , A_CAC , A_CAC_chng= data.filter(
-        pl.col('verified') == 'all' ).select(
+    qualified_leads ,qualified_leads_chng , A_TAT , A_TAT_chng , A_CAC , A_CAC_chng= metric_check( data.filter(
+        pl.col('verified') == 'all' ) ).select(
             ['U' , 'pct_change_U', 'A_TAT', 'pct_change_A_TAT' , 'A_CAC', 'pct_change_A_CAC']).row(0)
    
-    verified_clients ,  verified_clients_chng = data.filter( pl.col('verified') == 'Yes' ).select(['U' , 'pct_change_U' ]).row(0)
+    verified_clients ,  verified_clients_chng = metric_check( data.filter( pl.col('verified') == 'Yes' )).select(['U' , 'pct_change_U' ]).row(0)
     conversion_rate = verified_clients / qualified_leads * 100
     
-    conversion_rate_chng ,  = acq_pivot.select('pct_change_CR').row(0)
+    conversion_rate_chng ,  = metric_check( acq_pivot).select('pct_change_CR').row(0)
     
     new_deposits, new_deposits_chng = health_open.select('U_ACT' , 'pct_change_U_ACT' ).row(0)
 
