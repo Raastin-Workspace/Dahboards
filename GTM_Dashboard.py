@@ -1420,10 +1420,13 @@ else:
         , facet_row_spacing= 0.03
         , height = 550
         # , width = 800
-        , color_continuous_scale='rdylgn_r'
+        , color_continuous_scale= ['green' , 'yellow', 'red']
         
     )   
     fig.update_layout( 
         coloraxis_colorbar={"title": 'Customer Acq. Cost' }
     )
+    fig.update_traces(textposition='top center')
+    fig.update_traces(textfont_size = 9)
+
     st.plotly_chart(fig , use_container_width=True)
