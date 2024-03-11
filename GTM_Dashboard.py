@@ -31,6 +31,7 @@ st.write('Implemented by Polars for Maximum Performance ( 10-100 faster than Pan
 st.write('Keywords: Dashboard, GTM Strategy, Python (Polars, Streamlit, Dash, Plotly)')
 st.write(""" For the sake of demonstration, all the calculations are done on the spot when any change is requested.
          Note: Although it is implemented in Polars, depolyment is on a public server; so from time to time ETL could take seconds ( using Pandas would be minutes).""")
+st.write("""You can zoom in/out on plots or sort data tables by each columns.""")
 st.markdown('<style> div.block-container{padding-top:1rem;}</style>', unsafe_allow_html = True)
 
 
@@ -348,22 +349,25 @@ if len(selected_channels) > 0:
 # =============================================================================
 # Feature Extraction - locations
 # =============================================================================
-# if 'plocations' not in st.session_state:
+if 'plocations' not in st.session_state:
 
-#     st.session_state.plocations = filter_pdf.select( pl.col(['country', 'population'  ]) ).unique().cache()
-#     st.session_state.plocations = st.session_state.plocations.select( pl.all().sort_by('population' , descending=True) )
-#     st.session_state.plocations = st.session_state.plocations.with_columns( country_category = pl.lit('small'))
+    st.session_state.plocations = filter_pdf.select( pl.col(['country', 'population'  ]) ).unique().cache()
+    st.session_state.plocations = st.session_state.plocations.select( pl.all().sort_by('population' , descending=True) )
+    st.session_state.plocations = st.session_state.plocations.with_columns( country_category = pl.lit('small'))
 
-#     st.session_state.plocations = st.session_state.plocations.with_columns(
-#     pl.when( pl.col('population') > 20 )
-#                 .then(pl.lit('XBig'))
-#             .when( pl.col('population') > 10 )
-#                 .then(pl.lit('Big'))
-#             .when( pl.col('population') > 5 )
-#                 .then(pl.lit('Med'))
-#             .otherwise(pl.lit('Small'))
-#         .alias('country_category')
-#     )
+    st.session_state.plocations = st.session_state.plocations.with_columns(
+    pl.when( pl.col('population') > 20 )
+                .then(pl.lit('XBig'))
+            .when( pl.col('population') > 10 )
+                .then(pl.lit('Big'))
+            .when( pl.col('population') > 5 )
+                .then(pl.lit('Med'))
+            .otherwise(pl.lit('Small'))
+        .alias('country_category')
+    ).rename( {'population' :'market_size'})
+    st.session_state.plocations = st.session_state.plocations.with_columns( 
+        pl.col('market_size').mul(M_frac).alias('market_size') 
+        )
 
 # =============================================================================
 # Feature Extraction - acquisition KPIs
@@ -470,15 +474,20 @@ for  period in filtered_period_cols :
         , pl.col("AA").cum_sum().over(cols).alias("ACTIVE_A")
     )
     
-    # kpis = kpis.with_columns(
-    #     ( pl.col(  'T') / pl.col(  'U') ).alias(  'TpU')
+    kpis = kpis.with_columns(
+        ( pl.col(  'DUM') / pl.col(  'ACTIVE_U') ).fill_nan(0).alias(  'DUMpU')
+        # , ( pl.col(  'T') / pl.col(  'U') ).alias(  'TpU')
     #     , ( pl.col(  'cum_T') / pl.col(  'cum_U') ).alias(  'cum_TpU')
     #     , ( pl.col(  'TPV') / pl.col(  'U') ).alias(  'TPVpU')
     #     , ( pl.col(  'TPV') / pl.col(  'T') ).alias(  'TPVpT')
     #     , ( pl.col(  'DUM') / pl.col(  'U') ).alias(  'DUMpU')
     #     , ( pl.col(  'DUM') / pl.col(  'T') ).alias(  'DUMpT')
-    # )
+        
+    )
     
+    kpis = kpis.with_columns(
+        pl.when( pl.col('DUMpU').is_infinite() ).then(0).otherwise(pl.col('DUMpU')).alias(  'DUMpU')
+    )
     kpis = kpis.with_columns(
     pl.selectors.by_dtype(pl.NUMERIC_DTYPES)\
     .pct_change().over(cols).mul(100).round(1)\
@@ -795,7 +804,7 @@ else:
     
     st.title( "Health Metrics" )
     
-    health_cols = st.columns([4,1,1,1])
+    health_cols = st.columns([3.5,1,1,1])
 
 
     # #####################    
@@ -1157,6 +1166,262 @@ else:
 # Expansion Streategy
 # =============================================================================
 
+    st.title( "Market Expansion Plan" )
+
+    expansion_cols = st.columns([3.5 , 3])
+
+    cac = acqs.filter(
+        (pl.col('country') != 'all')
+        & (pl.col('channel') == 'all')
+        & (pl.col('verified') == 'Yes')
+        # & (pl.col('date') == pl.col('date').max() )
+
+    ).group_by( pl.col( 'country') ).agg( 
+        pl.col( 'cum_U' ).last().alias('user_base')
+        , pl.col( 'A_CAC' ).mean().alias('A_CAC') 
+        )
+    # .rename( { 'cum_U' : 'User_Base'})
+
+    dum = trxns.filter(
+        (pl.col('country') != 'all')
+        & (pl.col('service') == 'all')
+        & (pl.col('trxn_group') == 'all')
+        & (pl.col('trxn_type') == 'all')
+        & (pl.col('date') == pl.col('date').max() )
+
+    ).select( 
+        pl.col( [ 'country' ,'service' , 'DUM' , 'ACTIVE_U', 'DUMpU'] ) 
+        ).rename( { 'ACTIVE_U' : 'active_users' } )
+
+    pops = st.session_state.plocations.collect()
+
+    penetration = pops.join( 
+        dum , on = 'country' , how = 'left').join(
+            cac , on = 'country' , how = 'left')
+
+    penetration = penetration.with_columns(
+        ( pl.col('user_base').mul(K_frac) /  pl.col('market_size') ).mul(100).alias('penetration_rate'))
+
+    penetration = penetration.drop_nulls()
+    fig = px.scatter(
+        
+        penetration.to_pandas()
+        , x = 'DUMpU'
+        , y = 'A_CAC'
+        , size = 'market_size'
+        , text= 'country'
+        , color = 'penetration_rate'
+        , title= "New Market Opprotunity Plot (Size: Market Size)"
+        ,labels=dict(
+            
+            market_size="Market Size in M#"
+            , A_CAC="Average Customer Acquisition Cost"
+            , peneteration_rate=" Peneteration Rate"
+            , DUMpU=" Depoists per Client"
+        )
+        # , facet_col= 'service'
+        # , facet_col_wrap= 2 
+        # , facet_col_spacing= 0.01
+        # , facet_row_spacing= 0.03
+        , height = 550
+        , color_continuous_scale='rdylgn_r'
+        
+    )
+    fig.update_layout( 
+        coloraxis_colorbar={"title": 'Penetration Rate' }
+    )
+    fig.update_traces(textposition='top center')
+    fig.update_traces(textfont_color='black' , textfont_size = 9)
+
+    expansion_cols[0].plotly_chart(fig , use_container_width=True)
+
+    penetration = penetration.select( 
+        pl.col( [ 'country' ,'market_size' ,'user_base' , 'active_users' 
+                , 'DUM' , 'DUMpU', 'penetration_rate' , 'A_CAC'] ) 
+    )
+    penetration= penetration.with_columns(
+        pl.col('user_base').mul(K_frac).alias('user_base')
+        , pl.col('active_users').mul(K_frac).alias('active_users')
+        , pl.col('DUM').mul(M_frac).alias('DUM')
+        , pl.col('DUMpU').mul(K_frac).alias('DUMpU')
+    )
+
+    f = {
+        'market_size':'{:.2f} M#'
+        , 'user_base':'{:.2f} K#'
+        , 'active_users':'{:.2f} K#'
+        , 'DUM':'{:.2f} M€'
+        , 'DUMpU':'{:.2f} K€'
+        , 'A_CAC':'{:.2f} €'
+        , 'penetration_rate':'{:.2f} %'
+        }
+    expansion_cols[1].title("")
+    expansion_cols[1].title("")
+    expansion_cols[1].title("")
+    penetration = penetration.to_pandas()
+    penetration.index += 1
+    expansion_cols[1].dataframe(
+        penetration.style.format(f).highlight_max( 
+            color = 'green', subset = ['market_size' , 'user_base' , 'active_users'] 
+            ).highlight_max( 
+            color = 'red' , subset = ['penetration_rate' , 'A_CAC' ] 
+            ).highlight_max( 
+            color = 'green' , subset = ['DUM' , 'DUMpU' ] 
+            ).highlight_min( 
+            color = 'red', subset = ['market_size' , 'user_base' , 'active_users'] 
+            ).highlight_min( 
+            color = 'green' , subset = ['penetration_rate' , 'A_CAC' ] 
+            ).highlight_min( 
+            color = 'red' , subset = ['DUM' , 'DUMpU' ] 
+            )
+        )
+
+
+    # expansion_cols[1].dataframe(
+    #     penetration.to_pandas().style.format(f).text_gradient( 
+    #         axis = 0 , cmap = 'Blues' , subset = ['market_size' ]  , vmin = -50 , vmax = 100
+    #         ).text_gradient( 
+    #         axis = 0 , cmap = 'YlGn' , subset = [ 'user_base' , 'active_users']  , vmin = -10 , vmax = 10
+    #         ).text_gradient( 
+    #         axis = 0 , cmap = 'RdYlGn_r' , subset = [ 'A_CAC' ]  , vmin = 5 #, vmax = 15
+    #         ).text_gradient( 
+    #         axis = 0 , cmap = 'RdYlGn_r' , subset = ['penetration_rate' ]  , vmin = 1  , vmax = 10
+    #         ).text_gradient( 
+    #         axis = 0 , cmap = 'YlGn' , subset = [ 'DUMpU' ] , vmin = -100 , vmax =200
+    #         ).text_gradient( 
+    #         axis = 0 , cmap = 'Greens' , subset = ['DUM' ] , vmin = -500 , vmax = 500
+    #         )
+    #     )
 
 
 
+    # =============================================================================
+# Expansion Streategy by service type
+# =============================================================================
+
+
+    expansion_cols = st.columns([3.5 , 3])
+
+    cac = acqs.filter(
+        (pl.col('country') != 'all')
+        & (pl.col('channel') == 'all')
+        & (pl.col('verified') == 'Yes')
+        # & (pl.col('date') == pl.col('date').max() )
+
+    ).group_by( pl.col( 'country') ).agg( 
+        pl.col( 'cum_U' ).last().alias('user_base')
+        , pl.col( 'A_CAC' ).mean().alias('A_CAC') 
+        )
+    # .rename( { 'cum_U' : 'User_Base'})
+
+    dum = trxns.filter(
+        (pl.col('country') != 'all')
+        & (pl.col('service') != 'all')
+        & (pl.col('trxn_group') == 'all')
+        & (pl.col('trxn_type') == 'all')
+        & (pl.col('date') == pl.col('date').max() )
+
+    ).select( 
+        pl.col( [ 'country' ,'service' , 'DUM' , 'ACTIVE_U', 'DUMpU'] ) 
+        ).rename( { 'ACTIVE_U' : 'active_users' } )
+
+    pops = st.session_state.plocations.collect()
+
+    penetration = pops.join( 
+        dum , on = 'country' , how = 'left').join(
+            cac , on = 'country' , how = 'left')
+
+    penetration = penetration.with_columns(
+        ( pl.col('active_users').mul(K_frac) /  pl.col('market_size') ).mul(100).alias('penetration_rate'))
+    penetration = penetration.drop_nulls()
+
+    fig = px.scatter(
+        
+        penetration.to_pandas()
+        , x = 'DUMpU'
+        , y = 'A_CAC'
+        , size = 'market_size'
+        , text= 'country'
+        , color = 'penetration_rate'
+        , title= "New Market Opprotunity Plot for each Service (Size: Market Size)"
+        ,labels=dict(
+            
+            market_size="Market Size in M#"
+            , A_CAC="Average Customer Acquisition Cost"
+            , peneteration_rate=" Peneteration Rate"
+            , DUMpU=" Depoists per Client"
+        )
+        , facet_col= 'service'
+        # , facet_col_wrap= 2 
+        , facet_col_spacing= 0.05
+        # , facet_row_spacing= 0.03
+        , height = 550
+        # , width = 800
+        , color_continuous_scale='rdylgn_r'
+        
+    )
+    fig.update_layout( 
+        coloraxis_colorbar={"title": 'Penetration Rate' }
+    )
+    fig.update_traces(textposition='top center')
+    fig.update_traces(textfont_color='black' , textfont_size = 9)
+
+    st.plotly_chart(fig , use_container_width=True)
+
+
+
+# Cross-selling
+    product_list = penetration.select('service').unique().to_series().to_list()
+    combs = [ x for x in itertools.combinations( product_list, 2) ]
+
+    relative_data = []
+
+    for i , x in enumerate(combs):
+
+        a = penetration.filter(
+            pl.col('service') == x[0] 
+            ).select(
+                  pl.all().prefix('S1_') 
+            ).with_columns( pl.lit(x[0]).alias('S1') )
+        b = penetration.filter(
+            pl.col('service') == x[1] 
+            ).select( 
+                pl.all().prefix('S2_') 
+            ).with_columns( pl.lit(x[1]).alias('S2') )
+        c = a.join(b
+            , left_on= 'S1_country'
+            , right_on= 'S2_country'
+        ).with_columns( pl.lit('S1(' + ') vs. S2('.join(x) + ')').alias('product_set') )
+        relative_data.append(c)
+    relative_data = pl.concat( relative_data ) 
+
+    fig = px.scatter(
+        
+        relative_data.to_pandas()
+        , x = 'S1_penetration_rate'
+        , y = 'S2_penetration_rate'
+        , size = 'S1_market_size'
+        , text= 'S1_country'
+        , color = 'S1_A_CAC'
+        , title= "Cross-sell Opprotunity Plot (Size: Market Size)"
+        # ,labels=dict(
+            
+        #     market_size="Market Size in M#"
+        #     , A_CAC="Average Customer Acquisition Cost"
+        #     , peneteration_rate=" Peneteration Rate"
+        #     , DUMpU=" Depoists per Client"
+        # )
+        , facet_col= 'product_set'
+        # , facet_row= 'S1'
+        # , facet_col_wrap= 2 
+        , facet_col_spacing= 0.05
+        , facet_row_spacing= 0.03
+        , height = 550
+        # , width = 800
+        , color_continuous_scale='rdylgn_r'
+        
+    )   
+    fig.update_layout( 
+        coloraxis_colorbar={"title": 'Customer Acq. Cost' }
+    )
+    st.plotly_chart(fig , use_container_width=True)
