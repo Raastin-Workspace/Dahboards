@@ -83,6 +83,7 @@ if 'pdf' not in st.session_state:
     # 
     st.session_state.pdf = st.session_state.pdf.with_columns( pl.col([ 'acc_maturity_date' , 'trxn_datetime' , 'acc_opening_date']).str.to_datetime())
 
+    st.session_state.pdf = st.session_state.pdf.sort(pl.col('trxn_datetime'))
     st.session_state.pdf = st.session_state.pdf.with_columns(
         pl.col('trxn_datetime').dt.date().alias('date')
         , pl.col('acc_maturity_date').dt.date().alias('mdate')
@@ -121,6 +122,25 @@ if 'pdf' not in st.session_state:
         ).alias('mquarter')
     )
 
+    #
+
+    st.session_state.pdf = st.session_state.pdf.with_columns( 
+        pl.col('trxn_type').replace(
+            {
+                'open' : 'gain'
+                ,'renew' : 'gain'
+                ,'top_up' : 'gain'
+                ,'mature' : 'lose'
+                ,'break' : 'lose'
+                ,'withdraw' : 'lose'
+                , 'signup' : 'join'
+                , 'reject' : 'join'
+                , 'verify' : 'join'
+            }
+        ).alias('trxn_group')
+    )
+
+
     # 
 
     st.session_state.pdf = st.session_state.pdf.with_columns( 
@@ -133,10 +153,47 @@ if 'pdf' not in st.session_state:
             pl.col('tpv')
         ).alias('atpv') # artificial tpv, since renewal's tpv is 0
     )
+
+    st.session_state.pdf = st.session_state.pdf.with_columns( 
+        pl.when( 
+            pl.col('trxn_type') == 'open'
+        ).then( 
+            1
+        ).when( 
+            pl.col('trxn_type') == 'break'
+        ).then( 
+            -1
+        ).when( 
+            pl.col('trxn_type') == 'mature'
+        ).then( 
+            -1
+        ).otherwise(
+            0
+        ).alias('account_status') # artificial account value ( open and close! )
+    )
+    st.session_state.pdf = st.session_state.pdf.with_columns( 
+        pl.col('account_status').cum_sum().over(pl.col('user_id') ).alias('account_count')
+    )
+    
+    st.session_state.pdf = st.session_state.pdf.with_columns( 
+        pl.when( 
+            ( pl.col('account_count') == 0 ) & ( pl.col('account_status') == -1 )
+        ).then( 
+            -1
+        ).when( 
+            ( pl.col('account_count') == 1 ) & ( pl.col('account_status') == 1 )
+        ).then( 
+            1
+        ).otherwise(
+            0
+        ).alias('user_status') # artificial user value ( join or die! )
+    )
+    
+    
     st.session_state.pdf = st.session_state.pdf.collect().lazy()
 
 
-# 
+#
 
 first_day = st.session_state.pdf.select('date').min().collect().to_series().min()
 last_day = st.session_state.pdf.select( 'date').max().collect().to_series().max()
@@ -356,8 +413,8 @@ for  period in  filtered_period_cols :
 
 trxn_kpis = {}
 
-cols = [   'country' , 'service' ,'trxn_type'   ]
-trxns = filter_pdf.filter( ~ pl.col('trxn_type').is_in(['signup' ,'reject']) ).cache()
+cols = [   'country' , 'service' , 'trxn_group','trxn_type'   ]
+trxns = filter_pdf.filter( ~ pl.col('trxn_type').is_in(['signup' ,'reject' , 'verify']) ).cache()
 for  period in filtered_period_cols :
     print(period)
     print ()
@@ -371,8 +428,17 @@ for  period in filtered_period_cols :
         trxns.group_by(  pl.col( [*x , period] ) , maintain_order = True ).agg( 
             pl.col('user_id').n_unique().alias( 'U')
             , pl.col('trxn_id').count().alias(  'T')
-            , pl.col('tpv').sum().alias(  'TPV')
+            , 
+            pl.col('tpv').sum().alias(  'TPV')
             , pl.col('atpv').sum().alias(  'ATPV')
+
+            , pl.col('user_status').sum().alias( 'AU')
+            , pl.col('account_status').sum().alias( 'AA')
+
+            , ( pl.col('user_status') > 0 ).sum().alias( 'U_ACT')
+            , ( pl.col('user_status') < 0 ).sum().alias( 'U_DCT')
+            , ( pl.col('account_status') > 0 ).sum().alias( 'A_ACT')
+            , ( pl.col('account_status') < 0 ).sum().alias( 'A_DCT')
         ) for x in combs 
     ] 
     kpis = pl.concat(kpis , how= 'diagonal')
@@ -388,9 +454,9 @@ for  period in filtered_period_cols :
     
     kpis = kpis.with_columns(
         pl.col([ 'date', 'service' ,'trxn_type' , 'country'  ])
-        , pl.col("TPV").cum_sum().over([ 'service' ,'trxn_type' , 'country']).alias("DUM")
-        , pl.col("U").cum_sum().over([ 'service' ,'trxn_type' , 'country']).alias("cum_U")
-        , pl.col("T").cum_sum().over([ 'service' ,'trxn_type' , 'country']).alias("cum_T")
+        , pl.col("TPV").cum_sum().over(cols).alias("DUM")
+        , pl.col('AU').cum_sum().over(cols).alias("ACTIVE_U")
+        , pl.col("AA").cum_sum().over(cols).alias("ACTIVE_A")
     )
     
     # kpis = kpis.with_columns(
@@ -521,21 +587,20 @@ else:
     title_cols[0].title('North Star Metrics')
 
 
-    data = trxns
-    
-    
-    country = ['all']
-    trxn_type = ['all']
-    service = ['all']
-    
-    data = data.filter( 
-        (pl.col('country').is_in(country)  )
-        & ( pl.col('trxn_type').is_in(trxn_type)  ) 
-        & ( pl.col('service').is_in(service))
+    trxn_data = trxns.filter( 
+        (pl.col('country') == 'all' )
+        & ( pl.col('service') == 'all' )
+        & ( pl.col('trxn_group') == 'all' )
     )#.sort('date')
     
-    last = data.select( pl.all().last() )
-    DUM ,DUM_chng    = last.select( pl.col(['DUM', 'pct_change_DUM']) ).row(0)
+    
+  
+
+    trxn_last = trxn_data.filter( pl.col('date') == pl.col('date').max() )
+    
+    DUM ,DUM_chng    = trxn_last.filter(
+        pl.col('trxn_type') == 'all'  
+        ).select( pl.col(['DUM', 'pct_change_DUM']) ).row(0)
 
     DUM = round(DUM * B_frac, 2) 
     
@@ -551,20 +616,9 @@ else:
         , delta_color= "normal" if DUM_chng!= None else "off"
     )
     # 
-    data = trxns
-    
-    country = ['all']
-    trxn_type = ['open']
-    service = ['all']
-    
-    data = data.filter( 
-        (pl.col('country').is_in(country)  )
-        & ( pl.col('trxn_type').is_in(trxn_type)  ) 
-        & ( pl.col('service').is_in(service))
-    )#.sort('date')
-    
-    last = data.select( pl.all().last() )
-    NACC ,NACC_chng    = last.select( pl.col(['T', 'pct_change_T']) ).row(0)
+    NACC ,NACC_chng = trxn_last.filter(
+        pl.col('trxn_type') == 'open'  
+        ).select( pl.col(['T', 'pct_change_T']) ).row(0)
     NACC = round(NACC * K_frac, 2) 
     # NACC_chng = round(NACC_chng , 1)
     
@@ -580,18 +634,14 @@ else:
     )
     
     
-    data = trxns.sort(by = ['service' ,'date'])
-    country = ['all']
-    trxn_type = ['all']
-    service = data.select('service').unique()#.sort(by ='service')
-    data = data.filter( 
-        (pl.col('country').is_in(country)  )
-        & ( pl.col('trxn_type').is_in(trxn_type)  ) 
-        & ( pl.col('service').is_in(service))
-    )#.sort('date')
-    # 
+    trxn_data_plot = trxns.filter( 
+        (pl.col('country') == 'all' )
+        & ( pl.col('trxn_type') == 'all' )
+    ).sort(by = ['service' ,'date'])
 
-    fig = px.ecdf( data.to_pandas(), x= 'date' , y = "TPV" , color = 'service' ,   ecdfnorm=None, markers=True
+    
+
+    fig = px.ecdf( trxn_data_plot.to_pandas(), x= 'date' , y = "TPV" , color = 'service' ,   ecdfnorm=None, markers=True
                   , color_discrete_map= { 'all' : 'green' ,'Fixed14' : 'purple' , 'Flexible9' :'orange' , 'Locked14' : 'blue'}
     
                   , title= freq + ' Deposits under Management')
@@ -608,13 +658,13 @@ else:
     title_cols[1].title('Counter Metrics')
 
         
-    due_data = dues.filter( pl.col('country') == 'all')\
-    .filter( pl.col('trxn_type') == 'all')\
-    .filter( pl.col('service') == 'all')\
-    .filter ( pl.col('mdate') != pl.col('date') )\
-    .unique(subset='mdate', keep="last").sort( pl.col(  ['mdate','date'] ) )
+    due_data = dues.filter( 
+        (pl.col('country') == 'all')
+        & ( pl.col('service') == 'all')
+        & ( pl.col('mdate') != pl.col('date') )
+    ).unique(subset='mdate', keep="last").sort( pl.col(  ['mdate','date'] ) )
     
-    cols = [  'service' ,'trxn_type' , 'country'  ]
+    cols = [  'trxn_type'  ]
     
     due_data = due_data.with_columns(
         pl.selectors.by_dtype(pl.NUMERIC_DTYPES)\
@@ -623,11 +673,13 @@ else:
         )
     
 
-    last = due_data.filter( 
+    due_last = due_data.filter( 
         pl.col('mdate') > pl.col('date').max()
         ).unique(subset='date', keep="first")
     
-    DD ,DD_chng    = last.select( pl.col(['DD', 'pct_change_DD']) ).row(0)
+    DD ,DD_chng    = due_last.filter(
+        pl.col('trxn_type') == 'all'  
+        ).select( pl.col(['DD', 'pct_change_DD']) ).row(0)
     DD = round(DD * M_frac, 1) 
     
     
@@ -645,20 +697,11 @@ else:
     )
      
     # 
-    data = trxns
     
-    country = ['all']
-    trxn_type = ['break']
-    service = ['all']
     
-    data = data.filter( 
-        (pl.col('country').is_in(country)  )
-        & ( pl.col('trxn_type').is_in(trxn_type)  ) 
-        & ( pl.col('service').is_in(service))
-    )#.sort('date')
-    
-    last = data.select( pl.all().last() )
-    DACC ,DACC_chng    = last.select( pl.col(['T', 'pct_change_T']) ).row(0)
+    DACC ,DACC_chng = trxn_last.filter(
+        pl.col('trxn_type') == 'break'  
+        ).select( pl.col(['T', 'pct_change_T']) ).row(0)
     DACC = round(DACC * K_frac, 2) 
     # DACC_chng = round(DACC_chng , 1)
     
@@ -674,23 +717,20 @@ else:
     )
     
     
-    trxn_data = trxns.filter( 
+    trxn_data_plot2 = trxn_data.filter( 
         pl.col('trxn_type').is_in( [ 'break', 'withdraw' , 'mature', 'renew'] )
-        & 
-        pl.col('country').is_in( ['all'] )
-        & pl.col('service').is_in( ['all'] )
     ).with_columns( (pl.col('ATPV').abs()).alias('pATPV') )
     
     mtime_axis = due_data.select( pl.col('mdate').unique() ).to_series().to_list()
-    time_axis = trxn_data.select( pl.col('date').unique() ).to_series().to_list()
+    time_axis = trxn_data_plot2.select( pl.col('date').unique() ).to_series().to_list()
     time_axis_sorted = sorted(list( set( mtime_axis + time_axis) ))
 
 
     due_data = due_data.to_pandas()
-    trxn_data = trxn_data.to_pandas()
+    trxn_data_plot2 = trxn_data_plot2.to_pandas()
     
     fig = px.bar( 
-        trxn_data 
+        trxn_data_plot2 
         , x = 'date' 
         , y = "pATPV" 
         , color = 'trxn_type' 
@@ -743,6 +783,7 @@ else:
     DUM = DUM.filter( 
         (pl.col('country') != 'all')
         & (pl.col('trxn_type') == 'all')
+        & ( pl.col('trxn_group') == 'all' )
         & (pl.col('service') != 'all')
         & ( pl.col('date') == pl.col('date').max() )
     ) 
@@ -792,101 +833,47 @@ else:
 
     # #####################
 
-    trxn_pivot = trxns.filter( 
-        (pl.col('country') == 'all')
+
+    health_data = trxns.filter(
+        ( pl.col('date') == pl.col('date').max() )
         & (pl.col('service') == 'all')
+        & (pl.col('country') == 'all')
+   
     )
+    # health_data.with_columns( pl.col('trxn_type').replace([ 'break' , 'mature' , 'withdraw'] , 'churn') )
+    health_all = health_data.filter(
+        ( pl.col('trxn_group') == 'all' ) 
+        & ( pl.col('trxn_type') == 'all')
+    )
+    health_open = health_data.filter(
+        ( pl.col('trxn_group') == 'all' ) 
+        & ( pl.col('trxn_type') == 'open')
+    )
+    health_churn = health_data.filter(
+        ( pl.col('trxn_group') == 'lose' ) 
+        & ( pl.col('trxn_type') == 'all')
+    )
+    health_renew = health_data.filter(
+        ( pl.col('trxn_group') == 'all' ) 
+        & ( pl.col('trxn_type') == 'renew')
+    )
+    
 
-    trxn_pivot_clients = trxn_pivot.pivot(index = ['country' , 'service' ,'date' ]  , columns = 'trxn_type' , values = 'U').fill_null(0)
+
+    active_clients , active_clients_chng = health_all.select(['ACTIVE_U','pct_change_ACTIVE_U']).row(-1)    
+    churned_clients , churned_clients_chng = health_churn.select(['U_DCT','pct_change_U_DCT']).row(-1)
+    renewed_clients , renewed_clients_chng = health_renew.select(['U','pct_change_U']).row(-1)    
     
-    trxn_pivot_clients = trxn_pivot_clients.with_columns(
-        pl.sum_horizontal(['mature','break']).alias('churned')
-    )
-    
-    trxn_pivot_clients = trxn_pivot_clients.with_columns(
-        ( pl.col('open') - pl.col('churned') ).alias('active')
-    )
-    
-    trxn_pivot_clients = trxn_pivot_clients.with_columns(
-            pl.col([  'service'  , 'country' , 'date'  ])
-            , pl.selectors.by_dtype(pl.NUMERIC_DTYPES ).cum_sum().over([  'service'  , 'country' ]).name.prefix("cum_")
-        )
-    
-    trxn_pivot_clients = trxn_pivot_clients.with_columns(
-        pl.selectors.by_dtype(pl.NUMERIC_DTYPES)\
-        .pct_change().over(['country' , 'service']).mul(100).round(1)\
-        .name.prefix("pct_change_") )
-    
-    
-    # #####################    
-    trxn_pivot_accounts = trxn_pivot.pivot(index = ['country' , 'service' ,'date' ]  , columns = 'trxn_type' , values = 'T').fill_null(0)
-    trxn_pivot_accounts = trxn_pivot_accounts.with_columns(
-        pl.sum_horizontal(['mature','break']).alias('churned')
-    )
-    
-    trxn_pivot_accounts = trxn_pivot_accounts.with_columns(
-        ( pl.col('open') - pl.col('churned') ).alias('active')
-    )
-    
-    trxn_pivot_accounts = trxn_pivot_accounts.with_columns(
-            pl.col([  'service'  , 'country' , 'date'  ])
-            , pl.selectors.by_dtype(pl.NUMERIC_DTYPES ).cum_sum().over([  'service'  , 'country' ]).name.prefix("cum_")
-        )
-    
-    trxn_pivot_accounts = trxn_pivot_accounts.with_columns(
-        pl.selectors.by_dtype(pl.NUMERIC_DTYPES)\
-        .pct_change().over(['country' , 'service']).mul(100).round(1)\
-        .name.prefix("pct_change_") )
-    
-    # #####################    
-        
-    trxn_pivot_deposits = trxn_pivot.pivot(index = ['country' , 'service' ,'date' ]  , columns = 'trxn_type' , values = 'ATPV').fill_null(0)
-    trxn_pivot_deposits = trxn_pivot_deposits.with_columns(
-        pl.sum_horizontal(['withdraw','mature','break']).abs().alias('lost')
-        , pl.sum_horizontal(['open','top_up']).alias('gained')
-        
-    )
-    
-    trxn_pivot_deposits = trxn_pivot_deposits.with_columns(
-        ( pl.col('gained') - pl.col('lost') ).alias('net')
-    )
-    
-    trxn_pivot_deposits = trxn_pivot_deposits.with_columns(
-            pl.col([  'service'  , 'country' , 'date'  ])
-            , pl.selectors.by_dtype(pl.NUMERIC_DTYPES ).cum_sum().over([  'service'  , 'country' ]).name.prefix("cum_")
-        )
-    
-    trxn_pivot_deposits = trxn_pivot_deposits.with_columns(
-        pl.selectors.by_dtype(pl.NUMERIC_DTYPES)\
-        .pct_change().over(['country' , 'service']).mul(100).round(1)\
-        .name.prefix("pct_change_") )
-    
-    
-    # #####################  
-    
-    trxn_pivot_clients = trxn_pivot_clients.filter( pl.col('date') == pl.col('date').max() ).tail(1)
-    
-    trxn_pivot_accounts = trxn_pivot_accounts.filter( pl.col('date') == pl.col('date').max() ).tail(1)
-    
-    trxn_pivot_deposits = trxn_pivot_deposits.filter( pl.col('date') == pl.col('date').max() ).tail(1)
-    
-    # #####################
-    
-    active_clients , active_clients_chng = trxn_pivot_clients.select(['cum_active','pct_change_cum_active']).row(-1)    
-    churned_clients , churned_clients_chng = trxn_pivot_clients.select(['churned','pct_change_churned']).row(-1)
-    renewed_clients , renewed_clients_chng = trxn_pivot_clients.select(['renew','pct_change_renew']).row(-1)    
-    
-    active_accounts , active_account_chng = trxn_pivot_accounts.select(['cum_active','pct_change_cum_active']).row(-1)
-    churned_accounts , churned_account_chng = trxn_pivot_accounts.select(['churned','pct_change_churned']).row(-1)
-    renewed_accounts , renewed_account_chng = trxn_pivot_accounts.select(['renew','pct_change_renew']).row(-1)
+    active_accounts , active_account_chng = health_all.select(['ACTIVE_A','pct_change_ACTIVE_A']).row(-1)
+    churned_accounts , churned_account_chng = health_churn.select(['A_DCT','pct_change_A_DCT']).row(-1)
+    renewed_accounts , renewed_account_chng = health_renew.select(['T','pct_change_T']).row(-1)
 
     
-    net_deposits , net_deposits_chng = trxn_pivot_deposits.select(['cum_net','pct_change_cum_net']).row(-1)
-    lost_deposits , lost_deposits_chng = trxn_pivot_deposits.select(['lost','pct_change_lost']).row(-1)
-    renewed_deposits , renewed_deposits_chng = trxn_pivot_deposits.select(['renew','pct_change_renew']).row(-1)
+    net_deposits , net_deposits_chng = health_all.select(['DUM','pct_change_DUM']).row(-1)
+    lost_deposits , lost_deposits_chng = health_churn.select(['TPV','pct_change_TPV']).row(-1)
+    renewed_deposits , renewed_deposits_chng = health_renew.select(['ATPV','pct_change_ATPV']).row(-1)
 
-    # #####################
-
+    
     active_clients *= K_frac
     churned_clients *= K_frac
     renewed_clients *= K_frac
@@ -895,7 +882,7 @@ else:
     renewed_accounts *= K_frac
     
     net_deposits *= M_frac
-    lost_deposits *= M_frac
+    lost_deposits *= ( M_frac * -1) 
     renewed_deposits *= M_frac
     
     health_cols[1].title("")
@@ -1073,7 +1060,7 @@ else:
     
     conversion_rate_chng ,  = acq_pivot.select('pct_change_CR').row(0)
     
-    new_deposits, new_deposits_chng = trxn_pivot_deposits.select('open' , 'pct_change_open' ).row(0)
+    new_deposits, new_deposits_chng = health_open.select('U_ACT' , 'pct_change_U_ACT' ).row(0)
 
     qualified_leads *= K_frac
     verified_clients *= K_frac
@@ -1143,5 +1130,12 @@ else:
     
     # acq_cols[3].metric('New Deposits', 1,1)
 # metric_cols[3].metric('New Cross-Sell Accounts', 1,1)
+
+
+# =============================================================================
+# Expansion Streategy
+# =============================================================================
+
+
 
 
