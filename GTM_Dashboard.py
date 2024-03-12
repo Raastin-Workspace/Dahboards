@@ -473,18 +473,18 @@ for  period in filtered_period_cols :
     )
     
     kpis = kpis.with_columns(
-        ( pl.col(  'DUM') / pl.col(  'ACTIVE_U') ).fill_nan(0).alias(  'DUMpU')
+        ( pl.col(  'DUM') / pl.col(  'ACTIVE_U') ).fill_nan(0).alias(  'DUMpC')
         # , ( pl.col(  'T') / pl.col(  'U') ).alias(  'TpU')
     #     , ( pl.col(  'cum_T') / pl.col(  'cum_U') ).alias(  'cum_TpU')
     #     , ( pl.col(  'TPV') / pl.col(  'U') ).alias(  'TPVpU')
     #     , ( pl.col(  'TPV') / pl.col(  'T') ).alias(  'TPVpT')
-    #     , ( pl.col(  'DUM') / pl.col(  'U') ).alias(  'DUMpU')
+    #     , ( pl.col(  'DUM') / pl.col(  'U') ).alias(  'DUMpC')
     #     , ( pl.col(  'DUM') / pl.col(  'T') ).alias(  'DUMpT')
         
     )
     
     kpis = kpis.with_columns(
-        pl.when( pl.col('DUMpU').is_infinite() ).then(0).otherwise(pl.col('DUMpU')).alias(  'DUMpU')
+        pl.when( pl.col('DUMpC').is_infinite() ).then(0).otherwise(pl.col('DUMpC')).alias(  'DUMpC')
     )
     kpis = kpis.with_columns(
     pl.selectors.by_dtype(pl.NUMERIC_DTYPES)\
@@ -620,13 +620,13 @@ else:
         pl.col('trxn_type') == 'all'  
         ) ).select( pl.col(['DUM', 'pct_change_DUM']) ).row(0)
 
-    DUM = round(DUM * B_frac, 2) 
+    DUM = round(DUM * M_frac, 1) 
     
     
     metric_cols[0].metric(
         "{} Deposits under Management ({}DUM)".format(
             freq, period_prefixes[freq_index])
-        , "{} B€".format( DUM )
+        , "{} M€".format( DUM )
         , "{} % vs. prev. {}".format( 
             DUM_chng
             , period_names[freq_index] 
@@ -847,13 +847,13 @@ else:
         , color_continuous_scale='rdylgn'
         , color_continuous_midpoint= 0
         
-        , title = 'DUM & DD by Segment(click for zoom in/out)'
+        , title = '{} Deposits under Management & Due Deposits by Segment'.format(period_labels[freq_index])
         
         
     )
     
     fig.update(layout_coloraxis_showscale=False)
-    # fig.data[0].texttemplate = "%{label}<br>%{value:.2f} M€<br>%{percentRoot}"
+    fig.data[0].texttemplate = "%{label}<br>%{value:.2f} M€<br>%{percentRoot}"
     
     
     health_cols[0].plotly_chart(fig,use_container_width=True)
@@ -1175,21 +1175,23 @@ else:
         # & (pl.col('date') == pl.col('date').max() )
 
     ).group_by( pl.col( 'country') ).agg( 
-        pl.col( 'cum_U' ).last().alias('user_base')
+        pl.col( 'cum_U' ).last().alias('client_base')
         , pl.col( 'A_CAC' ).mean().alias('A_CAC') 
         )
-    # .rename( { 'cum_U' : 'User_Base'})
+    # .rename( { 'cum_U' : 'client_base'})
 
     dum = trxns.filter(
         (pl.col('country') != 'all')
         & (pl.col('service') == 'all')
         & (pl.col('trxn_group') == 'all')
         & (pl.col('trxn_type') == 'all')
-        & (pl.col('date') == pl.col('date').max() )
+        # & (pl.col('date') == pl.col('date').max() )
 
+    ).unique( 
+        subset= 'country', keep = 'last'
     ).select( 
-        pl.col( [ 'country' ,'service' , 'DUM' , 'ACTIVE_U', 'DUMpU'] ) 
-        ).rename( { 'ACTIVE_U' : 'active_users' } )
+        pl.col( [ 'country' ,'service' , 'DUM' , 'ACTIVE_U', 'DUMpC'] ) 
+        ).rename( { 'ACTIVE_U' : 'active_clients' } )
 
     pops = st.session_state.plocations.collect()
 
@@ -1198,24 +1200,25 @@ else:
             cac , on = 'country' , how = 'left')
 
     penetration = penetration.with_columns(
-        ( pl.col('user_base').mul(K_frac) /  pl.col('market_size') ).mul(100).alias('penetration_rate'))
+        ( pl.col('client_base').mul(K_frac) /  pl.col('market_size') ).mul(100).alias('penetration_rate'))
 
     penetration = penetration.drop_nulls()
     fig = px.scatter(
         
         penetration.to_pandas()
-        , x = 'DUMpU'
-        , y = 'A_CAC'
+        , x = 'A_CAC'
+        , y = 'DUMpC'
         , size = 'market_size'
         , text= 'country'
         , color = 'penetration_rate'
-        , title= "New Market Opprotunity Plot (Size: Market Size)"
+        , title= "Market Opprotunity Plot (Size: Market Size)"
         ,labels=dict(
             
-            market_size="Market Size in M#"
-            , A_CAC="Average Customer Acquisition Cost"
-            , peneteration_rate=" Peneteration Rate"
-            , DUMpU=" Depoists per Client"
+            market_size="Market Size (M#)"
+            , A_CAC="Avg. Customer Acq. Cost (€)"
+            , peneteration_rate="Peneteration Rate"
+            , DUMpC="Depoists per Client (€)"
+            , country = 'Country'
         )
         # , facet_col= 'service'
         # , facet_col_wrap= 2 
@@ -1235,24 +1238,33 @@ else:
     expansion_cols[0].plotly_chart(fig , use_container_width=True)
 
     penetration = penetration.select( 
-        pl.col( [ 'country' ,'service','market_size' ,'user_base' , 'active_users' 
-                , 'DUM' , 'DUMpU', 'penetration_rate' , 'A_CAC'] ) 
+        pl.col( [ 'country','market_size' ,'client_base' , 'active_clients' 
+                , 'DUM' , 'DUMpC', 'penetration_rate' , 'A_CAC'] ) 
     )
     penetration= penetration.with_columns(
-        pl.col('user_base').mul(K_frac).alias('user_base')
-        , pl.col('active_users').mul(K_frac).alias('active_users')
+        pl.col('client_base').mul(K_frac).alias('client_base')
+        , pl.col('active_clients').mul(K_frac).alias('active_clients')
         , pl.col('DUM').mul(M_frac).alias('DUM')
-        , pl.col('DUMpU').mul(K_frac).alias('DUMpU')
-    )
+        , pl.col('DUMpC').mul(K_frac).alias('DUMpC')
+    ).rename( { 'country' : 'Country'
+               ,'market_size' : 'Market Size'
+               ,'client_base' : 'Client Base'
+               , 'active_clients' : 'Active Clients'
+               , 'DUM'  : 'Deposits under Management'
+               , 'DUMpC' : 'Deposit per Client'
+               , 'penetration_rate'  : 'Penetration Rate'
+               , 'A_CAC' : 'Avg. Customer Acq. Cost'
+               }
+                )
 
     f = {
-        'market_size':'{:.2f} M#'
-        , 'user_base':'{:.3f} K#'
-        , 'active_users':'{:.3f} K#'
-        , 'DUM':'{:.2f} M€'
-        , 'DUMpU':'{:.2f} K€'
-        , 'A_CAC':'{:.2f} €'
-        , 'penetration_rate':'{:.2f} %'
+        'Market Size':'{:.2f} M#'
+        , 'Client Base':'{:.3f} K#'
+        , 'Active Clients':'{:.3f} K#'
+        , 'Deposits under Management':'{:.2f} M€'
+        , 'Deposit per Client':'{:.2f} K€'
+        , 'Avg. Customer Acq. Cost':'{:.2f} €'
+        , 'Penetration Rate':'{:.2f} %'
         }
     expansion_cols[1].title("")
     expansion_cols[1].title("")
@@ -1261,17 +1273,17 @@ else:
     penetration.index += 1
     expansion_cols[1].dataframe(
         penetration.style.format(f).highlight_max( 
-            color = 'green', subset = ['market_size' , 'user_base' , 'active_users'] 
+            color = 'green', subset = ['Market Size' , 'Client Base' , 'Active Clients'] 
             ).highlight_max( 
-            color = 'red' , subset = ['penetration_rate' , 'A_CAC' ] 
+            color = 'red' , subset = ['Penetration Rate' , 'Avg. Customer Acq. Cost' ] 
             ).highlight_max( 
-            color = 'green' , subset = ['DUM' , 'DUMpU' ] 
+            color = 'green' , subset = ['Deposits under Management' , 'Deposit per Client' ] 
             ).highlight_min( 
-            color = 'red', subset = ['market_size' , 'user_base' , 'active_users'] 
+            color = 'red', subset = ['Market Size' , 'Client Base' , 'Active Clients'] 
             ).highlight_min( 
-            color = 'green' , subset = ['penetration_rate' , 'A_CAC' ] 
+            color = 'green' , subset = ['Penetration Rate' , 'Avg. Customer Acq. Cost' ] 
             ).highlight_min( 
-            color = 'red' , subset = ['DUM' , 'DUMpU' ] 
+            color = 'red' , subset = ['Deposits under Management' , 'Deposit per Client' ] 
             )
         )
 
@@ -1280,13 +1292,13 @@ else:
     #     penetration.to_pandas().style.format(f).text_gradient( 
     #         axis = 0 , cmap = 'Blues' , subset = ['market_size' ]  , vmin = -50 , vmax = 100
     #         ).text_gradient( 
-    #         axis = 0 , cmap = 'YlGn' , subset = [ 'user_base' , 'active_users']  , vmin = -10 , vmax = 10
+    #         axis = 0 , cmap = 'YlGn' , subset = [ 'client_base' , 'active_clients']  , vmin = -10 , vmax = 10
     #         ).text_gradient( 
     #         axis = 0 , cmap = 'RdYlGn_r' , subset = [ 'A_CAC' ]  , vmin = 5 #, vmax = 15
     #         ).text_gradient( 
     #         axis = 0 , cmap = 'RdYlGn_r' , subset = ['penetration_rate' ]  , vmin = 1  , vmax = 10
     #         ).text_gradient( 
-    #         axis = 0 , cmap = 'YlGn' , subset = [ 'DUMpU' ] , vmin = -100 , vmax =200
+    #         axis = 0 , cmap = 'YlGn' , subset = [ 'DUMpC' ] , vmin = -100 , vmax =200
     #         ).text_gradient( 
     #         axis = 0 , cmap = 'Greens' , subset = ['DUM' ] , vmin = -500 , vmax = 500
     #         )
@@ -1295,7 +1307,7 @@ else:
 
 
     # =============================================================================
-# Expansion Streategy by service type : active users --> active accounts
+# Expansion Streategy by service type : Active Clients --> active accounts
 # =============================================================================
 
 
@@ -1308,21 +1320,23 @@ else:
         # & (pl.col('date') == pl.col('date').max() )
 
     ).group_by( pl.col( 'country') ).agg( 
-        pl.col( 'cum_U' ).last().alias('user_base')
+        pl.col( 'cum_U' ).last().alias('client_base')
         , pl.col( 'A_CAC' ).mean().alias('A_CAC') 
         )
-    # .rename( { 'cum_U' : 'User_Base'})
+    # .rename( { 'cum_U' : 'client_base'})
 
     dum = trxns.filter(
         (pl.col('country') != 'all')
         & (pl.col('service') != 'all')
         & (pl.col('trxn_group') == 'all')
         & (pl.col('trxn_type') == 'all')
-        & (pl.col('date') == pl.col('date').max() )
+        # & (pl.col('date') == pl.col('date').max() )
 
+    ).unique( 
+        subset= ['country' , 'service'], keep = 'last'
     ).select( 
-        pl.col( [ 'country' ,'service' , 'DUM' , 'ACTIVE_A', 'DUMpU'] ) 
-        ).rename( { 'ACTIVE_A' : 'active_users' } )
+        pl.col( [ 'country' ,'service' , 'DUM' , 'ACTIVE_A', 'DUMpC'] ) 
+        ).rename( { 'ACTIVE_A' : 'active_clients' } )
 
     pops = st.session_state.plocations.collect()
 
@@ -1331,24 +1345,30 @@ else:
             cac , on = 'country' , how = 'left')
 
     penetration = penetration.with_columns(
-        ( pl.col('active_users').mul(K_frac) /  pl.col('market_size') ).mul(100).alias('penetration_rate'))
+        ( pl.col('active_clients').mul(K_frac) /  pl.col('market_size') ).mul(100).alias('penetration_rate'))
+    
+    penetration = penetration.with_columns(
+        ( pl.col('active_clients').mul(K_frac) /  pl.col('client_base') ).mul(100).alias('AC_CB'))
+    
     penetration = penetration.drop_nulls()
 
     fig = px.scatter(
         
         penetration.to_pandas()
-        , x = 'DUMpU'
-        , y = 'A_CAC'
+        , x = 'A_CAC'
+        , y = 'DUMpC'
         , size = 'market_size'
         , text= 'country'
         , color = 'penetration_rate'
-        , title= "New Market Opprotunity Plot for each Service (Size: Market Size)"
+        , title= "Market Opprotunity Plot for each Service (Size: Market Size)"
         ,labels=dict(
             
-            market_size="Market Size in M#"
-            , A_CAC="Average Customer Acquisition Cost"
+            market_size="Market Size (M#)"
+            , A_CAC="Avg. Customer Acq. Cost (€)"
             , peneteration_rate=" Peneteration Rate"
-            , DUMpU=" Depoists per Client"
+            , DUMpC=" Depoists per Client (€)"
+            , country = 'Country'
+            , service = 'Service'
         )
         , facet_col= 'service'
         # , facet_col_wrap= 2 
@@ -1371,7 +1391,7 @@ else:
 
 
 # Cross-selling
-    product_list = penetration.select('service').unique().to_series().to_list()
+    product_list = penetration.select('service').unique().to_series().sort().to_list()
     combs = [ x for x in itertools.combinations( product_list, 2) ]
 
     relative_data = []
@@ -1393,46 +1413,52 @@ else:
             , right_on= 'S2_country'
         ).with_columns( pl.lit('S1(' + ') vs. S2('.join(x) + ')').alias('product_set') )
         relative_data.append(c)
-    relative_data = pl.concat( relative_data ) 
+    
+    if len(relative_data ) == 0:
+        st.write('Selected Filters Contain Not Enough Product for Cross-selling Analysis')
+    else:
+        relative_data = pl.concat( relative_data ) 
 
-    fig = px.scatter(
-        
-        relative_data.to_pandas()
-        , x = 'S1_penetration_rate'
-        , y = 'S2_penetration_rate'
-        , size = 'S1_market_size'
-        , text= 'S1_country'
-        , color = 'S1_A_CAC'
-        , title= "Cross-sell Opprotunity Plot (Size: Market Size)"
-        # ,labels=dict(
+        fig = px.scatter(
             
-        #     market_size="Market Size in M#"
-        #     , A_CAC="Average Customer Acquisition Cost"
-        #     , peneteration_rate=" Peneteration Rate"
-        #     , DUMpU=" Depoists per Client"
+            relative_data.to_pandas()
+            , x = 'S1_AC_CB'
+            , y = 'S2_AC_CB'
+            , size = 'S1_market_size'
+            , text= 'S1_country'
+            , color = 'S1_A_CAC'
+            , title= "Cross-sell Opprotunity Plot (Size: Market Size)"
+            ,labels=dict(
+                
+                S1_market_size="Market Size (M#)"
+                , A_CAC="Avg. Customer Acq. Cost (€)"
+                , S1_AC_CB="S1 Active Clients / Client Base"
+                , S2_AC_CB="S2 Active Clients / Client Base"
+                , S1_country = "Country"
+                , product_set = "Product Set"
+            )
+            , facet_col= 'product_set'
+            # , facet_row= 'S1'
+            # , facet_col_wrap= 2 
+            , facet_col_spacing= 0.05
+            , facet_row_spacing= 0.03
+            , height = 550
+            # , width = 800
+            , color_continuous_scale= ['green' , 'yellow', 'red']
+            
+        )   
+        fig.update_layout( 
+            coloraxis_colorbar={"title": 'Customer Acq. Cost (€)' }
+        )
+        fig.update_traces(textposition='top center')
+        fig.update_traces(textfont_size = 9)
+
+        st.plotly_chart(fig , use_container_width=True)
+
+        # st.dataframe( trxns.filter(
+        #     ( pl.col('country')== 'Montenegro' )
+        #     # & ( pl.col('service')== 'Fixed14' )
+        #     # & ( pl.col('trxn_group')== 'all' )
+        #     # & ( pl.col('trxn_type')== 'all' ) 
+        #     )
         # )
-        , facet_col= 'product_set'
-        # , facet_row= 'S1'
-        # , facet_col_wrap= 2 
-        , facet_col_spacing= 0.05
-        , facet_row_spacing= 0.03
-        , height = 550
-        # , width = 800
-        , color_continuous_scale= ['green' , 'yellow', 'red']
-        
-    )   
-    fig.update_layout( 
-        coloraxis_colorbar={"title": 'Customer Acq. Cost' }
-    )
-    fig.update_traces(textposition='top center')
-    fig.update_traces(textfont_size = 9)
-
-    st.plotly_chart(fig , use_container_width=True)
-
-    # st.dataframe( trxns.filter(
-    #     ( pl.col('country')== 'Montenegro' )
-    #     # & ( pl.col('service')== 'Fixed14' )
-    #     # & ( pl.col('trxn_group')== 'all' )
-    #     # & ( pl.col('trxn_type')== 'all' ) 
-    #     )
-    # )
