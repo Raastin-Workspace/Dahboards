@@ -178,7 +178,7 @@ if 'pdf' not in st.session_state:
         ).alias('account_status') # artificial account value ( open and close! )
     )
     st.session_state.pdf = st.session_state.pdf.with_columns( 
-        pl.col('account_status').cum_sum().over(pl.col('user_id') ).alias('account_count')
+        pl.col('account_status').cum_sum().over('user_id').alias('account_count')
     )
     
     st.session_state.pdf = st.session_state.pdf.with_columns( 
@@ -205,7 +205,6 @@ if 'time_frame' not in st.session_state:
     st.session_state.time_frame = st.session_state.pdf.select(
         pl.col( ['date','week' ,'month' , 'quarter' , 'year'] ).unique()
     )
-
 
 first_day = st.session_state.pdf.select('date').min().collect().to_series().min()
 last_day = st.session_state.pdf.select( 'date').max().collect().to_series().max()
@@ -449,7 +448,6 @@ for  period in filtered_period_cols :
 
             , pl.col('user_status').sum().alias( 'AU')
             , pl.col('account_status').sum().alias( 'AA')
-
             , ( pl.col('user_status') > 0 ).sum().alias( 'U_ACT')
             , ( pl.col('user_status') < 0 ).sum().alias( 'U_DCT')
             , ( pl.col('account_status') > 0 ).sum().alias( 'A_ACT')
@@ -1237,7 +1235,7 @@ else:
     expansion_cols[0].plotly_chart(fig , use_container_width=True)
 
     penetration = penetration.select( 
-        pl.col( [ 'country' ,'market_size' ,'user_base' , 'active_users' 
+        pl.col( [ 'country' ,'service','market_size' ,'user_base' , 'active_users' 
                 , 'DUM' , 'DUMpU', 'penetration_rate' , 'A_CAC'] ) 
     )
     penetration= penetration.with_columns(
@@ -1249,8 +1247,8 @@ else:
 
     f = {
         'market_size':'{:.2f} M#'
-        , 'user_base':'{:.2f} K#'
-        , 'active_users':'{:.2f} K#'
+        , 'user_base':'{:.3f} K#'
+        , 'active_users':'{:.3f} K#'
         , 'DUM':'{:.2f} M€'
         , 'DUMpU':'{:.2f} K€'
         , 'A_CAC':'{:.2f} €'
@@ -1297,7 +1295,7 @@ else:
 
 
     # =============================================================================
-# Expansion Streategy by service type
+# Expansion Streategy by service type : active users --> active accounts
 # =============================================================================
 
 
@@ -1323,8 +1321,8 @@ else:
         & (pl.col('date') == pl.col('date').max() )
 
     ).select( 
-        pl.col( [ 'country' ,'service' , 'DUM' , 'ACTIVE_U', 'DUMpU'] ) 
-        ).rename( { 'ACTIVE_U' : 'active_users' } )
+        pl.col( [ 'country' ,'service' , 'DUM' , 'ACTIVE_A', 'DUMpU'] ) 
+        ).rename( { 'ACTIVE_A' : 'active_users' } )
 
     pops = st.session_state.plocations.collect()
 
@@ -1430,3 +1428,11 @@ else:
     fig.update_traces(textfont_size = 9)
 
     st.plotly_chart(fig , use_container_width=True)
+
+    # st.dataframe( trxns.filter(
+    #     ( pl.col('country')== 'Montenegro' )
+    #     # & ( pl.col('service')== 'Fixed14' )
+    #     # & ( pl.col('trxn_group')== 'all' )
+    #     # & ( pl.col('trxn_type')== 'all' ) 
+    #     )
+    # )
