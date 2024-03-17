@@ -36,13 +36,61 @@ st.markdown('<style> div.block-container{padding-top:1rem;}</style>', unsafe_all
 
 
 # =============================================================================
-# Sidebar
+# Functions
 # =============================================================================
-# with st.sidebar.expander("Filters"):
+def check_metric( func ):
     
-#     f1 = st.file_uploader(":file_folder: Upload the file" , type = (['csv' , 'xlsx']))
+    def wrapper( df , KPI_name , kpi_type = '€', delta_type = 'normal' ):
+            
+        if df.is_empty():
+            # st.write('Empty')
+            return 'No Record' , 'No prev. Record'
+        
+        # st.write('not')
+        return func(df , KPI_name , kpi_type, delta_type )
+        
+    return wrapper
     
     
+@check_metric
+def metric_rep ( df , KPI_name , kpi_type = '€', delta_type = 'normal' ):
+    
+    val , pct = df.row(-1)
+    
+    val_copy , pct_copy = val , pct
+    
+    
+    if kpi_type =='%':
+        val *= 100
+        
+    len_val = len(f'{val:.0f}')
+    m = (len_val - 1)// 3 
+    r = 2 - ( (len_val -1 )%  3)
+    
+    if kpi_type =='#' and m == 0 :
+        r = 0     
+
+    suffix= [ '' , 'K' , 'M' ,'B'][m]
+    val *= ( K_frac ** m )
+    
+    
+    
+    
+    len_pct = len(f'{abs(pct):.0f}') if pct!= None else "PP"
+    m_pct = (len_pct - 1)// 3 
+    r_pct = 2 - ( (len_pct -1 )%  3)
+
+    suffix_pct= [ '' , 'K' , 'M' ,'B'][m_pct]
+    pct *= ( K_frac ** m_pct )
+
+    
+    title = f"{freq} {KPI_name}"
+    val = f"{val:03.{r}f}{suffix}{kpi_type}"
+    pct = f"{pct:+.{r_pct}f}{suffix_pct} % vs. prev. {period_names[freq_index]}"\
+        if pct != None else "No prev. stat"
+    delta_type = delta_type if pct!= None else "off"
+    
+    return  val_copy , pct_copy, [title , val, pct, delta_type]
 
 
 # =============================================================================
@@ -69,6 +117,9 @@ K_frac = 10**(-3)
 M_frac = 10**(-6)
 B_frac = 10**(-9)
 
+
+
+    
 def metric_check( df ):
     if df.is_empty():
         return df.clear(1).fill_null(0)
@@ -601,7 +652,13 @@ else:
 # North Star Metrics
 # =============================================================================
 
+    
 
+    
+
+
+    
+    
     title_cols[0].title('North Star Metrics')
 
 
@@ -616,41 +673,33 @@ else:
 
     trxn_last = trxn_data.filter( pl.col('date') == pl.col('date').max() )
     
-    DUM ,DUM_chng    = metric_check( trxn_last.filter(
-        pl.col('trxn_type') == 'all'  
-        ) ).select( pl.col(['DUM', 'pct_change_DUM']) ).row(0)
-
-    DUM = round(DUM * M_frac, 1) 
     
-    
-    metric_cols[0].metric(
-        "{} Deposits under Management ({}DUM)".format(
-            freq, period_prefixes[freq_index])
-        , "{} M€".format( DUM )
-        , "{} % vs. prev. {}".format( 
-            DUM_chng
-            , period_names[freq_index] 
-            ) if DUM_chng!= None else "No prev. stat"
-        , delta_color= "normal" if DUM_chng!= None else "off"
+    DUM , DUM_chng, rep_data = metric_rep(
+        trxn_last.filter(
+            pl.col('trxn_type') == 'all'  
+        ).select( pl.col(['DUM', 'pct_change_DUM']) )
+        , 'Deposits under Management'
     )
-    # 
+    
+
+
+    metric_cols[0].metric(
+        * rep_data
+    )
     
     
-    NACC ,NACC_chng = metric_check( trxn_last.filter(
-        pl.col('trxn_type') == 'open'  
-        ) ).select( pl.col(['T', 'pct_change_T']) ).row(0)
-    NACC = round(NACC * K_frac, 2) 
-    # NACC_chng = round(NACC_chng , 1)
+    
+    NACC , NACC_chng, rep_data = metric_rep( trxn_last.filter(
+        pl.col(
+            'trxn_type') == 'open'  
+        ).select( pl.col(['T', 'pct_change_T']) )
+        , 'Account Activation'
+        , kpi_type='#'
+    )
+    
     
     metric_cols[1].metric(
-        "{} Account Activation ({}AA)".format(
-            freq, period_prefixes[freq_index])
-        , "{} K#".format( NACC )
-        , "{} % vs. prev. {}".format( 
-            NACC_chng
-            , period_names[freq_index]
-            )  if NACC_chng != None else "No prev. stat"
-        , delta_color= "normal" if DUM_chng!= None else "off"
+       * rep_data
     )
     
     
@@ -664,6 +713,7 @@ else:
 
     time_axis = trxn_data_plot.select( pl.col('date').unique() ).to_series().to_list()
     time_axis_sorted = sorted(time_axis) 
+    
     fig = px.ecdf( trxn_data_plot.to_pandas().sort_values('date')
                   , x= 'date' , y = "TPV" 
                   , color = 'service' 
@@ -706,43 +756,35 @@ else:
         pl.col('mdate') > pl.col('date').max()
         ).unique(subset='date', keep="first")
     
-    DD ,DD_chng    = metric_check( due_last.filter(
-        pl.col('trxn_type') == 'all'  
-        ) ).select( pl.col(['DD', 'pct_change_DD']) ).row(0)
-    DD = round(DD * M_frac, 1) 
+    DD ,DD_chng, rep_data = metric_rep( 
+        due_last.filter(
+            pl.col('trxn_type') == 'all'  
+        ).select( pl.col(['DD', 'pct_change_DD']) )
+        , 'Due Deposits'
+        , delta_type = 'inverse'
+    )
     
     
     # DD_chng = round(DD_chng , 1)
     
     metric_cols[2].metric(
-        "Comming {} Due Deposits ({}DD)".format(
-            period_names[freq_index] , period_prefixes[freq_index])
-        , "{} M€".format( DD )
-        , "{} % vs. curr. {}".format( 
-            DD_chng
-            , period_names[freq_index]) if DD_chng != None else "No prev. stat"
-        , delta_color= 'inverse'  if DD_chng!= None else "off"
-    
+        * rep_data
     )
      
     # 
     
     
-    DACC ,DACC_chng = metric_check( trxn_last.filter(
-        pl.col('trxn_type') == 'break'  
-        ) ).select( pl.col(['T', 'pct_change_T']) ).row(0)
-    DACC = round(DACC * K_frac, 2) 
-    # DACC_chng = round(DACC_chng , 1)
+    DACC ,DACC_chng, rep_data = metric_rep( 
+        trxn_last.filter(
+            pl.col('trxn_type') == 'break'  
+        ).select( pl.col(['T', 'pct_change_T']))
+        , 'Account Deactivation'
+        , kpi_type='#'
+        , delta_type = 'inverse'
+    )
     
     metric_cols[3].metric(
-        "{} Account Deactivation ({}AD)".format(
-            freq, period_prefixes[freq_index])
-        , "{} K#".format( DACC )
-        , "{} % vs. prev. {}".format( 
-            DACC_chng
-            , period_names[freq_index]
-            ) if DACC_chng!= None else "No prev. stat"
-        , delta_color= 'inverse' if DACC_chng!= None else "off"
+        * rep_data
     )
     
     
@@ -870,48 +912,78 @@ else:
    
     )
     # health_data.with_columns( pl.col('trxn_type').replace([ 'break' , 'mature' , 'withdraw'] , 'churn') )
-    health_all = metric_check( health_data.filter(
+    health_all = health_data.filter(
         ( pl.col('trxn_group') == 'all' ) 
         & ( pl.col('trxn_type') == 'all')
-    ) )
-    health_open = metric_check( health_data.filter(
+    ) 
+    health_open = health_data.filter(
         ( pl.col('trxn_group') == 'all' ) 
         & ( pl.col('trxn_type') == 'open')
-    ) )
-    health_churn = metric_check( health_data.filter(
+    ) 
+    health_churn = health_data.filter(
         ( pl.col('trxn_group') == 'lose' ) 
         & ( pl.col('trxn_type') == 'all')
-    ) )
-    health_renew = metric_check( health_data.filter(
+    ) 
+    health_renew = health_data.filter(
         ( pl.col('trxn_group') == 'all' ) 
         & ( pl.col('trxn_type') == 'renew')
-    ) )
+    ) 
     
 
-    active_clients , active_clients_chng = health_all.select(['ACTIVE_U','pct_change_ACTIVE_U']).row(-1)    
-    churned_clients , churned_clients_chng = health_churn.select(['U_DCT','pct_change_U_DCT']).row(-1)
-    renewed_clients , renewed_clients_chng = health_renew.select(['U','pct_change_U']).row(-1)    
+    active_clients , active_clients_chng, ac_rep = metric_rep(
+        health_all.select(['ACTIVE_U','pct_change_ACTIVE_U'])
+        , 'Active Clients'
+        , kpi_type= '#'
+    )
+    churned_clients , churned_clients_chng , cc_rep = metric_rep(
+        health_churn.select(['U_DCT','pct_change_U_DCT'])
+        , 'Churned Clients'
+        , kpi_type= '#'
+        , delta_type= 'inverse'
+    )
+        
+    renewed_clients , renewed_clients_chng , rc_rep = metric_rep(
+        health_renew.select(['U','pct_change_U'])
+        , 'Retained Clients'
+        , kpi_type= '#'
+    )
     
-    active_accounts , active_account_chng = health_all.select(['ACTIVE_A','pct_change_ACTIVE_A']).row(-1)
-    churned_accounts , churned_account_chng = health_churn.select(['A_DCT','pct_change_A_DCT']).row(-1)
-    renewed_accounts , renewed_account_chng = health_renew.select(['T','pct_change_T']).row(-1)
+    active_accounts , active_account_chng, aa_rep = metric_rep(
+        health_all.select(['ACTIVE_A','pct_change_ACTIVE_A'])
+        , 'Active Accounts'
+        , kpi_type= '#'
+    )
+        
+    churned_accounts , churned_account_chng, ca_rep = metric_rep(
+        health_churn.select(['A_DCT','pct_change_A_DCT'])
+        , 'Closed Accounts'
+        , kpi_type= '#'
+        , delta_type= 'inverse'
+    )
+        
+    renewed_accounts , renewed_account_chng, ra_rep = metric_rep(
+        health_renew.select(['T','pct_change_T'])
+        , 'Renewed Accounts'
+        , kpi_type= '#'
+    )
 
     
-    net_deposits , net_deposits_chng = health_all.select(['DUM','pct_change_DUM']).row(-1)
-    lost_deposits , lost_deposits_chng = health_churn.select(['TPV','pct_change_TPV']).row(-1)
-    renewed_deposits , renewed_deposits_chng = health_renew.select(['ATPV','pct_change_ATPV']).row(-1)
-
+    net_deposits , net_deposits_chng, nd_rep = metric_rep(
+        health_all.select(['DUM','pct_change_DUM'])
+        , 'Net Deposits'
+    )
     
-    active_clients *= K_frac
-    churned_clients *= K_frac
-    renewed_clients *= K_frac
-    active_accounts *= K_frac
-    churned_accounts *= K_frac
-    renewed_accounts *= K_frac
+    health_churn = health_churn.with_columns(pl.col(['TPV']).mul(-1) )
+    lost_deposits , lost_deposits_chng, ld_rep = metric_rep(
+        health_churn.select(['TPV','pct_change_TPV'])
+        , 'Lost Deposits'
+        , delta_type= 'inverse'
+    )
     
-    net_deposits *= M_frac
-    lost_deposits *= ( M_frac * -1) 
-    renewed_deposits *= M_frac
+    renewed_deposits , renewed_deposits_chng, rd_rep = metric_rep(
+        health_renew.select(['ATPV','pct_change_ATPV'])
+        , 'Renewed Deposits'
+    )
     
     health_cols[1].title("")
     health_cols[1].title("")
@@ -920,92 +992,18 @@ else:
     health_cols[3].title("")
     health_cols[3].title("")
     
-    health_cols[1].metric(
-        'Active Clients', '{:.1f} K#'.format(active_clients) 
-        , '{:.1f} % vs. prev. {}'.format( 
-            active_clients_chng
-            , period_names[freq_index]
-            ) if active_clients_chng!= None else "No prev. stat"
-    
-        , delta_color= "normal" if active_clients_chng!= None else "off"
-    )
-    
-    health_cols[1].metric(
-        '{} Churned Clients'.format(period_labels[freq_index]), '{:.1f} K#'.format(churned_clients) 
-        , '{:.1f} % vs. prev. {}'.format( 
-            churned_clients_chng
-            , period_names[freq_index]
-            ) if churned_clients_chng!= None else "No prev. stat"
-        , delta_color= 'inverse' if churned_clients_chng!= None else "off"
-           
-    )
-    
-    health_cols[1].metric(
-        '{} Retained Clients'.format(period_labels[freq_index]), '{:.1f} K#'.format(renewed_clients) 
-        , '{:.1f} % vs. prev. {}'.format( 
-            renewed_clients_chng
-            , period_names[freq_index]
-            ) if renewed_clients_chng!= None else "No prev. stat"
-        
-        , delta_color= "normal" if active_clients_chng!= None else "off" 
-    )
+    health_cols[1].metric( * ac_rep )
+    health_cols[1].metric( * cc_rep )
+    health_cols[1].metric( * rc_rep )
     
     
-    health_cols[2].metric(
-        'Active Accounts', '{:.1f} K#'.format(active_accounts) 
-        , '{:.1f} % vs. prev. {}'.format( 
-            active_account_chng
-            , period_names[freq_index]
-            ) if active_account_chng!= None else "No prev. stat"
-        , delta_color= "normal" if active_account_chng!= None else "off"
-    )
-    health_cols[2].metric(
-        '{} Closed Accounts'.format(period_labels[freq_index]), '{:.1f} K#'.format( churned_accounts) 
-        , '{:.1f} % vs. prev. {}'.format( 
-            churned_account_chng
-            , period_names[freq_index]
-            ) if churned_account_chng!= None else "No prev. stat"
-        , delta_color= 'inverse' if churned_account_chng!= None else "off"
-        
-    )
-    health_cols[2].metric(
-        '{} Renewed Accounts'.format(period_labels[freq_index]), '{:.1f} K#'.format(renewed_accounts) 
-        , '{:.1f} % vs. prev. {}'.format( 
-            renewed_account_chng
-            , period_names[freq_index]
-            ) if renewed_account_chng!= None else "No prev. stat"
-        , delta_color= "normal" if renewed_account_chng!= None else "off"
-        
-           
-    )
+    health_cols[2].metric( * aa_rep )
+    health_cols[2].metric( * ca_rep )
+    health_cols[2].metric( * ra_rep )
     
-    health_cols[3].metric(
-        'Net Deposits (DUM)', '{:.1f} M€'.format(net_deposits) 
-        , '{:.1f} % vs. prev. {}'.format( 
-            net_deposits_chng
-            , period_names[freq_index]
-            ) if net_deposits_chng!= None else "No prev. stat"
-        , delta_color= "normal" if net_deposits_chng!= None else "off"
-    )
-    health_cols[3].metric(
-        '{} Lost Deposits'.format(period_labels[freq_index]), '{:.1f} M€'.format( lost_deposits) 
-        , '{:.1f} % vs. prev. {}'.format( 
-            lost_deposits_chng
-            , period_names[freq_index]
-            ) if lost_deposits_chng!= None else "No prev. stat"
-        , delta_color= 'inverse' if lost_deposits_chng!= None else "off"
-        
-    )
-    health_cols[3].metric(
-        '{} Renewed Deposits'.format(period_labels[freq_index]), '{:.1f} M€'.format(renewed_deposits) 
-        , '{:.1f} % vs. prev. {}'.format( 
-            renewed_deposits_chng
-            , period_names[freq_index]
-            ) if renewed_deposits_chng!= None else "No prev. stat"
-        , delta_color= "normal" if renewed_deposits_chng!= None else "off"
-        
-           
-    )
+    health_cols[3].metric( * nd_rep )
+    health_cols[3].metric( * ld_rep )
+    health_cols[3].metric( * rd_rep )
     
     
 # =============================================================================
@@ -1022,9 +1020,8 @@ else:
         & (pl.col('verified') != 'all')
         & (pl.col('channel') != 'all')
     ).with_columns( pl.col('verified').replace( { 'Yes' : 'Verified' , 'No' : 'Rejected'}))
-    
-    data = data.with_columns( pl.col('U') * K_frac)
-    
+
+    # data = data.with_columns( pl.col('U')* K_frac) 
     
     
     fig = px.treemap(
@@ -1033,12 +1030,21 @@ else:
         , color = 'A_CAC'
         
         , color_continuous_scale='rdylgn_r'
+        ,labels=dict(
+            
+            market_size="Market Size (M#)"
+            , A_CAC="Avg. CAC (€)"
+            , U="New Users"
+            , DUMpC="Depoists per Client (€)"
+            , country = 'Country'
+        )
 
         
     , title= 'Current {} Acquisitions ( & avg. customer acq. cost: A_CAC)'.format(period_names[freq_index])
     )
-    
-    fig.data[0].texttemplate = "%{label}<br>%{value:.2f} K#<br>%{percentRoot}"
+    # fig.data[0].customdata = data.to_pandas()['A_CAC'].tolist()
+
+    fig.data[0].texttemplate = "%{label}<br>%{value:.0f} #<br>%{percentRoot}"
     
     
     # fig.update_traces(root_color="grey")
@@ -1079,81 +1085,54 @@ else:
         & ( pl.col('channel') == 'all' ) 
         & ( pl.col('date') == pl.col('date').max() )
     )
-    qualified_leads ,qualified_leads_chng , A_TAT , A_TAT_chng , A_CAC , A_CAC_chng= metric_check( data.filter(
-        pl.col('verified') == 'all' ) ).select(
-            ['U' , 'pct_change_U', 'A_TAT', 'pct_change_A_TAT' , 'A_CAC', 'pct_change_A_CAC']).row(0)
+    data_verified = data.filter(
+        pl.col('verified') == 'all' 
+    )
+    
+    qualified_leads ,qualified_leads_chng, ql_rep = metric_rep(
+        data_verified.select(['U' , 'pct_change_U'] )
+        , 'New Qualified Leads'
+        , kpi_type = '#'
+    )
+    A_TAT , A_TAT_chng, tat_rep = metric_rep(
+        data_verified.select(['A_TAT', 'pct_change_A_TAT' ] )
+        , 'avg. Turn Around Time'
+        , kpi_type = 'Hours'
+        , delta_type= 'inverse'
+    )
+    A_CAC , A_CAC_chng, cac_rep = metric_rep(
+        data_verified.select(['A_CAC', 'pct_change_A_CAC'])
+        , 'avg. Customer Acq. Cost'
+        , delta_type= 'inverse'
+    )
    
-    verified_clients ,  verified_clients_chng = metric_check( data.filter( pl.col('verified') == 'Yes' )).select(['U' , 'pct_change_U' ]).row(0)
-    conversion_rate = verified_clients / qualified_leads * 100
+    verified_clients ,  verified_clients_chng, vc_rep = metric_rep( 
+        data.filter( pl.col('verified') == 'Yes' ).select(['U' , 'pct_change_U' ])
+        , 'New Clients'
+        , kpi_type = '#'
+    )
     
-    conversion_rate_chng ,  = metric_check( acq_pivot).select('pct_change_CR').row(0)
+    # conversion_rate = verified_clients / qualified_leads * 100
+    conversion_rate, conversion_rate_chng, crc_rep = metric_rep( 
+        acq_pivot.select([ 'CR', 'pct_change_CR'])
+        , 'Conversion Rate'
+        , kpi_type = '%'
+    )
     
-    new_deposits, new_deposits_chng = health_open.select('U_ACT' , 'pct_change_U_ACT' ).row(0)
+    new_deposits, new_deposits_chng, nd_rep = metric_rep( 
+        health_open.select('U_ACT' , 'pct_change_U_ACT' )
+        , 'New Deposits'
+    )
 
-    qualified_leads *= K_frac
-    verified_clients *= K_frac
-    new_deposits *= M_frac
+
+    acq_cols[1].metric( * ql_rep )
     
-    acq_cols[1].metric(
-        'New Qualified Leads'
-        , '{:.2f} K#'.format(qualified_leads)
-        , '{:.1f} % vs. prev. {}'.format( 
-            qualified_leads_chng
-            , period_names[freq_index]
-            ) if qualified_leads_chng!= None else "No prev. stat"
+    acq_cols[1].metric( * tat_rep )
+    acq_cols[1].metric( * cac_rep )
     
-        , delta_color= "normal" if qualified_leads_chng!= None else "off"
-    )
-    
-    acq_cols[1].metric(
-        'avg. Turn Around Time'
-        ,'{:.1f} Hours'.format(A_TAT) 
-        , '{:.1f} % vs. prev. {}'.format( 
-            A_TAT_chng
-            , period_names[freq_index]
-            ) if A_TAT_chng!= None else "No prev. stat"
-        , delta_color= "inverse" if A_TAT_chng!= None else "off"
-    )
-    acq_cols[1].metric(
-        'avg. Customer Acq. Cost'
-        ,'{:.1f} €'.format(A_CAC) 
-        , '{:.1f} % vs. prev. {}'.format( 
-            A_CAC_chng
-            , period_names[freq_index]
-            ) if A_CAC_chng!= None else "No prev. stat"
-        , delta_color= "inverse" if A_CAC_chng!= None else "off"
-    )
-    
-    acq_cols[2].metric(
-        'New Clients'
-        ,'{:.2f} K#'.format(verified_clients)
-        , '{:.1f} % vs. prev. {}'.format( 
-            verified_clients_chng
-            , period_names[freq_index]
-            ) if verified_clients_chng!= None else "No prev. stat"
-    
-        , delta_color= "normal" if verified_clients_chng!= None else "off"
-    )
-    acq_cols[2].metric(
-        'Conversion Rate'
-        ,'{:.1f} %'.format(conversion_rate)
-        , '{:.1f} % vs. prev. {}'.format( 
-            conversion_rate_chng
-            , period_names[freq_index]
-            ) if conversion_rate_chng!= None else "No prev. stat"
-    
-        , delta_color= "normal" if conversion_rate_chng!= None else "off"
-        )
-    acq_cols[3].metric(
-        'New Deposits'
-        ,'{:.1f} M€'.format(new_deposits)
-        , '{:.1f} % vs. prev. {}'.format( 
-            new_deposits_chng
-            , period_names[freq_index]
-            ) if new_deposits_chng!= None else "No prev. stat"
-    
-        , delta_color= "normal" if new_deposits_chng!= None else "off"
-        )
+    acq_cols[2].metric( * vc_rep )
+    acq_cols[2].metric( * crc_rep )
+    acq_cols[3].metric( * nd_rep )
     # acq_cols[2].metric('Expected Revenue', 1,1)
     
     # acq_cols[3].metric('New Deposits', 1,1)
@@ -1306,7 +1285,7 @@ else:
 
 
 
-    # =============================================================================
+# =============================================================================
 # Expansion Streategy by service type : Active Clients --> active accounts
 # =============================================================================
 
@@ -1462,3 +1441,6 @@ else:
         #     # & ( pl.col('trxn_type')== 'all' ) 
         #     )
         # )
+
+
+
