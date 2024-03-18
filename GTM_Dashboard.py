@@ -6,9 +6,12 @@ import polars as pl
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # others
 import itertools
+import math
+
 
 
 # =============================================================================
@@ -1023,43 +1026,98 @@ else:
     
     acq_cols = st.columns([3.5 ,1,1,1])
     
-    final_segmented_acqs = final_acqs.filter( 
-        (pl.col('country') != 'all')
-        & (pl.col('channel') != 'all')
-        & (pl.col('trxn_type').is_in( ['verify' ,'reject' ]) )
-    ).with_columns( pl.col('trxn_type').replace( { 'verify' : 'Verified' , 'reject' : 'Rejected'}))
+    # final_segmented_acqs = final_acqs.filter( 
+    #     (pl.col('country') != 'all')
+    #     & (pl.col('channel') != 'all')
+    #     & (pl.col('trxn_type').is_in( ['verify' ,'reject' ]) )
+    # ).with_columns( pl.col('trxn_type').replace( { 'verify' : 'Verified' , 'reject' : 'Rejected'}))
 
-    # data = data.with_columns( pl.col('U')* K_frac) 
+    # # data = data.with_columns( pl.col('U')* K_frac) 
     
     
-    fig = px.treemap(
-        final_segmented_acqs.to_pandas()
-        , path= [px.Constant('Europe'),'country' ,'channel' , 'trxn_type']
-        , values = "U" 
-        , color = 'A_CAC'
+    # fig = px.treemap(
+    #     final_segmented_acqs.to_pandas()
+    #     , path= [px.Constant('Europe'),'country' ,'channel' , 'trxn_type']
+    #     , values = "U" 
+    #     , color = 'A_CAC'
         
-        , color_continuous_scale='rdylgn_r'
-        ,labels=dict(
+    #     , color_continuous_scale='rdylgn_r'
+    #     ,labels=dict(
             
-            market_size="Market Size (M#)"
-            , A_CAC="Avg. CAC (€)"
-            , U="New Users"
-            , DUMpC="Depoists per Client (€)"
-            , country = 'Country'
-        )
+    #         market_size="Market Size (M#)"
+    #         , A_CAC="Avg. CAC (€)"
+    #         , U="New Users"
+    #         , DUMpC="Depoists per Client (€)"
+    #         , country = 'Country'
+    #     )
 
         
-    , title= 'Current {} Acquisitions by Segment'.format(period_names[freq_index])
-    )
-    # fig.data[0].customdata = data.to_pandas()['A_CAC'].tolist()
+    # , title= 'Current {} Acquisitions by Segment'.format(period_names[freq_index])
+    # )
+    # # fig.data[0].customdata = data.to_pandas()['A_CAC'].tolist()
 
-    fig.data[0].texttemplate = "%{label}<br>%{value:.0f} #<br>%{percentRoot}"
+    # fig.data[0].texttemplate = "%{label}<br>%{value:.0f} #<br>%{percentRoot}"
     
     
-    # fig.update_traces(root_color="grey")
-    fig.update_traces(legendgrouptitle_text="AA" )
+    # # fig.update_traces(root_color="grey")
+    # fig.update_traces(legendgrouptitle_text="AA" )
     
-    acq_cols[0].plotly_chart(fig,use_container_width=True)
+    # acq_cols[0].plotly_chart(fig,use_container_width=True)
+
+
+    final_acqs_by_channel = final_acqs.filter(
+        ( pl.col('trxn_type') != 'reject' )
+        & ( pl.col('channel') != 'all' )
+        & ( pl.col('country') == 'all' )
+    ).sort('U' , descending = True).to_pandas()
+    
+    channel_list = final_acqs_by_channel.channel.unique()
+    count = len(channel_list)
+    
+    rows = math.ceil( count / 3)
+    cols =  math.ceil(count / rows)
+    
+    fig = make_subplots( 
+        rows = rows
+        , cols = cols
+        , specs = [[{"type": "funnelarea"} for _ in range(0, cols)] for _ in range(0, rows) ]
+        , horizontal_spacing = 0.01 
+        , vertical_spacing= 0.01
+    )
+    
+    for i , x in enumerate( channel_list ):
+        
+        query = final_acqs_by_channel.query( ''' channel == @x ''')
+        vals = query.U
+        pcts = (vals / vals.max() * 100)
+        fig.add_trace(
+            go.Funnelarea(
+                values= vals
+                , text = pcts
+                , labels = query.trxn_type 
+                , title = x
+                , textinfo = "value+text"
+                , texttemplate= '%{value} # <br>%{text:.0f}%'
+
+                , marker= dict(colors=[  'orange', 'gold'  , 'green' ])
+                
+            ) 
+            , col = i % cols + 1
+            , row = i // cols + 1
+            
+        )
+    fig.update_layout(
+        legend=dict(
+            orientation = "h",
+            yanchor = "top",
+            y = 1.15 ,
+            xanchor="left",
+            # x = 1.2
+        )
+    ) 
+    fig.update_layout(title = f'{period_labels[freq_index]} Acquisitions Funnel by Channel')
+        
+    acq_cols[0].plotly_chart(fig , use_container_width= True )
 
 
 # =============================================================================
