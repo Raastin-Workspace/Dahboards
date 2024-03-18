@@ -1417,7 +1417,7 @@ else:
             ,labels=dict(
                 
                 S1_market_size="Market Size (M#)"
-                , A_CAC="Avg. Customer Acq. Cost (€)"
+                , S1_A_CAC="Avg. Customer Acq. Cost (€)"
                 , S1_AC_CB="S1 Active Clients / Client Base"
                 , S2_AC_CB="S2 Active Clients / Client Base"
                 , S1_country = "Country"
@@ -1433,9 +1433,9 @@ else:
             , color_continuous_scale= ['green' , 'yellow', 'red']
             
         )   
-        fig.update_layout( 
-            coloraxis_colorbar={"title": 'Customer Acq. Cost (€)' }
-        )
+        # fig.update_layout( 
+        #     coloraxis_colorbar={"title": 'Customer Acq. Cost (€)' }
+        # )
         fig.update_traces(textposition='top center')
         fig.update_traces(textfont_size = 9)
 
