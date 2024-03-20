@@ -8,9 +8,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+
 # others
+import pandas as pd
 import itertools
 import math
+# import random
+import matplotlib
 
 
 
@@ -221,8 +225,8 @@ if 'rgsns_pdf' not in st.session_state:
     openings = st.session_state.trxns_pdf.filter(
         pl.col('trxn_type') == 'open' 
     ).select(
-        pl.col( ['user_id' , 'trxn_id' ,'trxn_datetime' , 'trxn_type'] )    
-    )
+        pl.col( ['user_id' , 'trxn_id' ,'trxn_datetime' ] )    
+    ).with_columns(pl.lit('activate').alias('trxn_type') )
         
     st.session_state.rgsns_pdf = pl.concat(
         [ st.session_state.rgsns_pdf , openings]
@@ -408,6 +412,19 @@ if len(selected_channels) > 0:
     filtered_rgsns = filtered_rgsns.filter( pl.col('channel').is_in( selected_channels))
 
 
+    
+color_map = dict()
+channels = filtered_rgsns.select(pl.col('channel') ).unique().collect().to_series().to_list()
+channel_colors = { x: 'blue' for x in channels }
+color_map.update(channel_colors)
+gains = { x: 'green' for x in ['activate','verify', 'signup','renew', 'open' ,'cross-open','re-open' , 'ongoing']  }
+color_map.update(gains)
+losses = { x: 'red' for x in ['reject' , 'mature', 'break' ,'dropped']  }
+color_map.update(losses)
+services = { x: 'purple' for x in ['Locked14' , 'Flexible9', 'Fixed14']  }
+color_map.update(services)
+
+
 
 
 # =============================================================================
@@ -473,8 +490,8 @@ for  label in  calculation_list :
 
     cr_kpis = cr_kpis.with_columns(
         ( pl.col('verify') / pl.col('signup') ).alias('CR_vs')
-        , ( pl.col('open') / pl.col('verify') ).alias('CR_ov')
-        , ( pl.col('open') / pl.col('signup') ).alias('CR_os')
+        , ( pl.col('activate') / pl.col('verify') ).alias('CR_av')
+        , ( pl.col('activate') / pl.col('signup') ).alias('CR_as')
     )
     
     cr_kpis = cr_kpis.with_columns(
@@ -850,6 +867,310 @@ else:
     
     fig_cols[1].plotly_chart(fig,use_container_width=True)
 
+# =============================================================================
+# Acquisition
+# =============================================================================
+    
+
+    st.title( "Acquisition Metrics" )
+    
+    acq_cols = st.columns([3.5 ,1,1,1])
+    
+    # final_segmented_acqs = final_acqs.filter( 
+    #     (pl.col('country') != 'all')
+    #     & (pl.col('channel') != 'all')
+    #     & (pl.col('trxn_type').is_in( ['verify' ,'reject' ]) )
+    # ).with_columns( pl.col('trxn_type').replace( { 'verify' : 'Verified' , 'reject' : 'Rejected'}))
+
+    # # data = data.with_columns( pl.col('U')* K_frac) 
+    
+    
+    # fig = px.treemap(
+    #     final_segmented_acqs.to_pandas()
+    #     , path= [px.Constant('Europe'),'country' ,'channel' , 'trxn_type']
+    #     , values = "U" 
+    #     , color = 'A_CAC'
+        
+    #     , color_continuous_scale='rdylgn_r'
+    #     ,labels=dict(
+            
+    #         market_size="Market Size (M#)"
+    #         , A_CAC="Avg. CAC (€)"
+    #         , U="New Users"
+    #         , DUMpC="Depoists per Client (€)"
+    #         , country = 'Country'
+    #     )
+
+        
+    # , title= 'Current {} Acquisitions by Segment'.format(period_names[freq_index])
+    # )
+    # # fig.data[0].customdata = data.to_pandas()['A_CAC'].tolist()
+
+    # fig.data[0].texttemplate = "%{label}<br>%{value:.0f} #<br>%{percentRoot}"
+    
+    
+    # # fig.update_traces(root_color="grey")
+    # fig.update_traces(legendgrouptitle_text="AA" )
+    
+    # acq_cols[0].plotly_chart(fig,use_container_width=True)
+
+    x_map = dict()
+    level_0 = { x: 0 for x in channels }
+    x_map.update(level_0)
+    level_1 = { x: 1 for x in ['verify','reject']  }
+    x_map.update(level_1)
+    level_2 = { x: 2 for x in ['activate' , 'dropped']  }
+    x_map.update(level_2)
+    level_3 = { x: 3 for x in ['Locked14' , 'Flexible9', 'Fixed14']  }
+    x_map.update(level_3)
+    
+    
+    extra_cols = []
+     
+    acquisition_flow = filtered_rgsns.filter(
+        pl.col('trxn_type' ) != 'signup'
+    ).select( 
+        pl.col([* extra_cols  ,'user_id' , 'channel','trxn_type', 'trxn_datetime' ])
+    )
+    
+    srvice_flow = filtered_trxns.filter(
+        pl.col('trxn_type' ) == 'open'
+    ).select( 
+        pl.col([* extra_cols  ,'user_id' , 'trxn_datetime'])
+        , pl.col('service').alias('trxn_type')
+    )
+       
+    flow = pl.concat(
+        [ acquisition_flow , srvice_flow ]
+        , how = 'diagonal'
+    ).with_columns(
+        pl.col('trxn_type').shift(1).over([* extra_cols, 'user_id' ]).alias('source')
+        , pl.col( 'trxn_type' ).alias('target')
+    ).with_columns(
+        pl.when( 
+            pl.col('source').is_null() 
+        ).then( pl.col('channel') ).otherwise(pl.col('source')).alias('source')
+    ).group_by([* extra_cols  , 'source','target']).len().collect().to_pandas()   
+    
+    unmatched = flow.groupby('target').len.sum() - flow.groupby('source').len.sum()
+    unmatched = unmatched[unmatched!= 0].dropna().rename('len').reset_index().rename(columns={'index':'source'})
+    unmatched['target'] = 'dropped'
+
+    flow = pd.concat( [flow , unmatched] )
+
+    nodes = flow.melt( 
+        id_vars = extra_cols  , value_vars = ['source','target'] , value_name = 'node' 
+    ).drop(columns = 'variable').drop_duplicates( ignore_index =True).reset_index() 
+    
+    flow = flow.reset_index().merge(
+        nodes
+        , how = 'left'
+        , left_on = [* extra_cols  , 'source']
+        , right_on = [* extra_cols  ,'node']
+        , suffixes = ('' , '_source')
+    )
+
+    flow = flow.merge(
+        nodes
+        , how = 'left'
+        , left_on = [* extra_cols  , 'target']
+        , right_on = [* extra_cols  ,'node']
+        , suffixes = ('' , '_target')
+    )
+
+
+    
+    nodes['color'] = nodes.node.map(color_map)
+    flow['color'] = flow.target.map(color_map)
+    
+    nodes['x'] = nodes.node.map(x_map)
+    nodes['x'] = ( (nodes.x +1) / (nodes.x.max() + 2) ).clip(0.05 , 0.95)
+    
+    nodes['y'] = nodes.groupby('x').cumcount()
+    nodes['y'] = nodes.groupby('x').y.transform( lambda x: ( x + 1 ) / ( x.max() + 2 )  ).fillna(0.5).clip(0.05 , 0.95)
+    
+    fig = go.Figure(
+        go.Sankey( 
+            arrangement='snap',
+            node = dict(
+                pad = 20,
+                label = nodes.node,
+                color = nodes.color , 
+                x = nodes.x,
+                y = nodes.y,
+            ),
+            
+            link = dict(
+                source = flow.index_source,  
+                target = flow.index_target,
+                value = flow.len
+                ,color= 'rgba' + flow.color.apply( matplotlib.colors.to_rgb).apply(lambda x: tuple([*x , 0.5])).astype(str)
+            )
+        )
+    )
+    
+    fig.update_layout(title_text=f'Acquisition Flow', font_size=10)
+    
+    acq_cols[0].plotly_chart(fig , use_container_width=True)
+
+
+
+# =============================================================================
+# 
+# =============================================================================
+    
+    acq_cols[1].title("")
+    acq_cols[1].title("")
+    acq_cols[2].title("")
+    acq_cols[2].title("")
+    acq_cols[3].title("")
+    acq_cols[3].title("")
+    
+    
+    
+    acq_all = final_acqs.filter( 
+        ( pl.col('country') == 'all' ) 
+        & ( pl.col('channel') == 'all' ) 
+    )
+    
+    acq_ql_all = acq_all.filter(
+        pl.col('trxn_type') == 'signup'
+    )
+    
+    
+    qualified_leads ,qualified_leads_chng, ql_rep = metric_rep(
+        acq_ql_all.select(['U' , 'pct_change_U'] )
+        , 'New Signups'
+        , kpi_type = '#'
+    )
+    
+    A_CAC , A_CAC_chng, cac_rep = metric_rep(
+        acq_ql_all.select(['A_CAC', 'pct_change_A_CAC'])
+        , 'avg. Customer Acq. Cost'
+        , delta_type= 'inverse'
+    )
+    
+    acq_vr_all = acq_all.filter(
+        pl.col('trxn_type') == 'verify'
+    )
+    acq_op_all = acq_all.filter(
+        pl.col('trxn_type') == 'open'
+    )
+   
+    verified_clients ,  verified_clients_chng, vc_rep = metric_rep( 
+        acq_vr_all.select(['U' , 'pct_change_U' ])
+        , 'New Verified Signups'
+        , kpi_type = '#'
+    )
+    A_TAT , A_TAT_chng, tat_rep = metric_rep(
+        acq_vr_all.select(['A_TAT', 'pct_change_A_TAT' ] )
+        , 'avg. Turn Around Time'
+        , kpi_type = 'Hours'
+        , delta_type= 'inverse'
+    )
+    
+    acq_cr_all = final_acqs_cr.filter( 
+        ( pl.col('country') == 'all' ) 
+        & ( pl.col('channel') == 'all' ) 
+    )
+    conversion_rate, conversion_rate_chng, crc_rep = metric_rep( 
+        acq_cr_all.select([ 'CR_as', 'pct_change_CR_as'])
+        , 'Conversion Rate'
+        , kpi_type = '%'
+    )
+    
+    
+    # new_deposits, new_deposits_chng, nd_rep = metric_rep( 
+    #     health_open.select('TPV' , 'pct_change_TPV' )
+    #     , 'New Deposits'
+    # )
+
+    new_clients, new_clients_chng, nc_rep = metric_rep( 
+        acq_op_all.select('U' , 'pct_change_U' )
+        , 'New Clients'
+        , kpi_type='#'
+        
+    )
+
+    acq_cols[1].title("")
+    acq_cols[1].title("")
+    acq_cols[1].metric( * ql_rep )
+    acq_cols[1].metric( * cac_rep )
+    
+    
+    acq_cols[2].title("")
+    acq_cols[2].title("")
+    acq_cols[2].metric( * vc_rep )
+    acq_cols[2].metric( * tat_rep )
+    
+    acq_cols[3].title("")
+    acq_cols[3].title("")
+    acq_cols[3].metric( * nc_rep )
+    acq_cols[3].metric( * crc_rep )
+    
+    # acq_cols[2].metric('Expected Revenue', 1,1)
+    
+    # acq_cols[3].metric('New Deposits', 1,1)
+# metric_cols[3].metric('New Cross-Sell Accounts', 1,1)
+
+
+# =============================================================================
+# 
+# =============================================================================
+
+    final_acqs_by_channel = final_acqs.filter(
+        ( pl.col('trxn_type') != 'reject' )
+        & ( pl.col('channel') != 'all' )
+        & ( pl.col('country') == 'all' )
+    ).sort('U' , descending = True).to_pandas()
+    
+    channel_list = final_acqs_by_channel.channel.unique()
+    count = len(channel_list)
+    
+    rows = math.ceil( count / 6 )
+    cols =  math.ceil(count / rows)
+    
+    fig = make_subplots( 
+        rows = rows
+        , cols = cols
+        , specs = [[{"type": "funnelarea"} for _ in range(0, cols)] for _ in range(0, rows) ]
+        , horizontal_spacing = 0.01 
+        , vertical_spacing= 0.01
+    )
+    
+    for i , x in enumerate( channel_list ):
+        
+        query = final_acqs_by_channel.query( ''' channel == @x ''')
+        vals = query.U
+        pcts = (vals / vals.max() * 100)
+        fig.add_trace(
+            go.Funnelarea(
+                values= vals
+                , text = pcts
+                , labels = query.trxn_type 
+                , title = x
+                , textinfo = "value+text"
+                , texttemplate= '%{value} # <br>%{text:.0f}%'
+
+                , marker= dict(colors=[  'orange', 'gold'  , 'green' ])
+                
+            ) 
+            , col = i % cols + 1
+            , row = i // cols + 1
+            
+        )
+    fig.update_layout(
+        legend=dict(
+            orientation = "h",
+            yanchor = "top",
+            y = 1.15 ,
+            xanchor="left",
+            # x = 1.2
+        )
+    ) 
+    fig.update_layout(title = f'{period_labels[freq_index]} Acquisitions Funnel by Channel')
+        
+    st.plotly_chart(fig , use_container_width= True )
 
 # =============================================================================
 # Health Metrics
@@ -1016,209 +1337,124 @@ else:
     health_cols[3].metric( * ld_rep )
     health_cols[3].metric( * rd_rep )
     
-    
 # =============================================================================
-# Acquisition
+#     Flow
 # =============================================================================
     
 
-    st.title( "Acquisition Metrics" )
-    
-    acq_cols = st.columns([3.5 ,1,1,1])
-    
-    # final_segmented_acqs = final_acqs.filter( 
-    #     (pl.col('country') != 'all')
-    #     & (pl.col('channel') != 'all')
-    #     & (pl.col('trxn_type').is_in( ['verify' ,'reject' ]) )
-    # ).with_columns( pl.col('trxn_type').replace( { 'verify' : 'Verified' , 'reject' : 'Rejected'}))
+    flow_cols = st.columns([1,1,1])
 
-    # # data = data.with_columns( pl.col('U')* K_frac) 
+    x_map = dict()
     
+    level_mapper = { x: 0 for x in channels }
+    x_map.update(level_mapper)
+    # level_mapper = { x: 1 for x in ['Locked14' , 'Flexible9', 'Fixed14'] }
+    # x_map.update(level_mapper)
+    level_mapper = { x: 1 for x in [ 'open' , 'cross-open'  ] }
+    x_map.update(level_mapper)
     
-    # fig = px.treemap(
-    #     final_segmented_acqs.to_pandas()
-    #     , path= [px.Constant('Europe'),'country' ,'channel' , 'trxn_type']
-    #     , values = "U" 
-    #     , color = 'A_CAC'
+    level_mapper = { x: 2.5 for x in ['re-open'] }
+    x_map.update(level_mapper)
+    
+    level_mapper = { x: 3.5 for x in ['renew' ] }
+    x_map.update(level_mapper)
+    
+    level_mapper = { x: 5 for x in ['ongoing' , 'mature', 'break' ] }
+    x_map.update(level_mapper)
+    
+     
+    for i , x in  enumerate( ['Flexible9' , 'Locked14' , 'Fixed14'] ):
         
-    #     , color_continuous_scale='rdylgn_r'
-    #     ,labels=dict(
+        service_pdf = filtered_trxns.filter( pl.col('service') == x )
+        channel_flow = service_pdf.filter(
+            pl.col('trxn_type' ).is_in(['open' , 'cross-open'])
+        ).select( 
+            pl.col(['user_id' , 'service' , 'trxn_datetime'])
+            , pl.col('channel').alias('trxn_type')
+    
+        )
+        
+        trxn_flow = service_pdf.filter(
+            ~ pl.col('trxn_type' ).is_in(['top_up' , 'withdraw'])
+        )
+        
+        flow = pl.concat( 
+            [ channel_flow , trxn_flow]
+            , how = 'diagonal'
+        ).with_columns(
+            pl.col( 'trxn_type' ).alias('source')
+            , pl.col('trxn_type').shift(-1).over(['user_id', 'service']).alias('target')
+        ).with_columns(
+            pl.when( 
+                pl.col('target').is_null() 
+                & ( pl.col('trxn_group') == 'gain' )
+            ).then( pl.lit('ongoing') ).otherwise(pl.col('target')).alias('target')
             
-    #         market_size="Market Size (M#)"
-    #         , A_CAC="Avg. CAC (€)"
-    #         , U="New Users"
-    #         , DUMpC="Depoists per Client (€)"
-    #         , country = 'Country'
-    #     )
-
+        ).group_by(['service' , 'source','target']).len().drop_nulls().collect().to_pandas()
+            
+        nodes = flow.melt( 
+            id_vars = 'service' , value_vars = ['source','target'] , value_name = 'node' 
+        ).drop(columns = 'variable').drop_duplicates( ignore_index =True).reset_index() 
         
-    # , title= 'Current {} Acquisitions by Segment'.format(period_names[freq_index])
-    # )
-    # # fig.data[0].customdata = data.to_pandas()['A_CAC'].tolist()
-
-    # fig.data[0].texttemplate = "%{label}<br>%{value:.0f} #<br>%{percentRoot}"
+        flow = flow.reset_index().merge(
+            nodes
+            , how = 'left'
+            , left_on = ['service' , 'source']
+            , right_on = ['service' ,'node']
+            , suffixes = ('' , '_source')
+        )
     
-    
-    # # fig.update_traces(root_color="grey")
-    # fig.update_traces(legendgrouptitle_text="AA" )
-    
-    # acq_cols[0].plotly_chart(fig,use_container_width=True)
-
-
-    final_acqs_by_channel = final_acqs.filter(
-        ( pl.col('trxn_type') != 'reject' )
-        & ( pl.col('channel') != 'all' )
-        & ( pl.col('country') == 'all' )
-    ).sort('U' , descending = True).to_pandas()
-    
-    channel_list = final_acqs_by_channel.channel.unique()
-    count = len(channel_list)
-    
-    rows = math.ceil( count / 3)
-    cols =  math.ceil(count / rows)
-    
-    fig = make_subplots( 
-        rows = rows
-        , cols = cols
-        , specs = [[{"type": "funnelarea"} for _ in range(0, cols)] for _ in range(0, rows) ]
-        , horizontal_spacing = 0.01 
-        , vertical_spacing= 0.01
-    )
-    
-    for i , x in enumerate( channel_list ):
+        flow = flow.merge(
+            nodes
+            , how = 'left'
+            , left_on = ['service' , 'target']
+            , right_on = ['service' ,'node']
+            , suffixes = ('' , '_target')
+        )
         
-        query = final_acqs_by_channel.query( ''' channel == @x ''')
-        vals = query.U
-        pcts = (vals / vals.max() * 100)
-        fig.add_trace(
-            go.Funnelarea(
-                values= vals
-                , text = pcts
-                , labels = query.trxn_type 
-                , title = x
-                , textinfo = "value+text"
-                , texttemplate= '%{value} # <br>%{text:.0f}%'
+        
+        
+        nodes['color'] = nodes.node.map(color_map)
+        flow['color'] = flow.target.map(color_map)
 
-                , marker= dict(colors=[  'orange', 'gold'  , 'green' ])
+        nodes['x'] = nodes.node.map(x_map)
+        nodes['x'] = ( (nodes.x +1) / (nodes.x.max() + 2) ).clip(0.05 , 0.95)
+        
+        nodes['y'] = nodes.groupby('x').cumcount()
+        nodes['y'] = nodes.groupby('x').y.transform( lambda x: ( x + 1 ) / ( x.max() + 2 )  ).fillna(0.5).clip(0.05 , 0.95)
                 
-            ) 
-            , col = i % cols + 1
-            , row = i // cols + 1
-            
+        fig = go.Figure(
+            go.Sankey(
+                arrangement='snap',
+                
+                node = dict(
+                    pad = 10,
+                    label = nodes.node,
+                    color =  nodes.color
+                    , x = nodes.x
+                    , y = nodes.y
+                ),
+                
+                link = dict(
+                    source = flow.index_source,  
+                    target = flow.index_target,
+                    value = flow.len
+                    , color =  'rgba' + flow.color.apply( matplotlib.colors.to_rgb).apply(lambda x: tuple([*x , 0.5])).astype(str)
+                    
+          
+                )
+            )
         )
-    fig.update_layout(
-        legend=dict(
-            orientation = "h",
-            yanchor = "top",
-            y = 1.15 ,
-            xanchor="left",
-            # x = 1.2
-        )
-    ) 
-    fig.update_layout(title = f'{period_labels[freq_index]} Acquisitions Funnel by Channel')
         
-    acq_cols[0].plotly_chart(fig , use_container_width= True )
-
-
-# =============================================================================
-# 
-# =============================================================================
-    
-    acq_cols[1].title("")
-    acq_cols[1].title("")
-    acq_cols[2].title("")
-    acq_cols[2].title("")
-    acq_cols[3].title("")
-    acq_cols[3].title("")
-    
-    
-    
-    acq_all = final_acqs.filter( 
-        ( pl.col('country') == 'all' ) 
-        & ( pl.col('channel') == 'all' ) 
-    )
-    
-    acq_ql_all = acq_all.filter(
-        pl.col('trxn_type') == 'signup'
-    )
-    
-    
-    qualified_leads ,qualified_leads_chng, ql_rep = metric_rep(
-        acq_ql_all.select(['U' , 'pct_change_U'] )
-        , 'New Signups'
-        , kpi_type = '#'
-    )
-    
-    A_CAC , A_CAC_chng, cac_rep = metric_rep(
-        acq_ql_all.select(['A_CAC', 'pct_change_A_CAC'])
-        , 'avg. Customer Acq. Cost'
-        , delta_type= 'inverse'
-    )
-    
-    acq_vr_all = acq_all.filter(
-        pl.col('trxn_type') == 'verify'
-    )
-    acq_op_all = acq_all.filter(
-        pl.col('trxn_type') == 'open'
-    )
-   
-    verified_clients ,  verified_clients_chng, vc_rep = metric_rep( 
-        acq_vr_all.select(['U' , 'pct_change_U' ])
-        , 'New Verified Signups'
-        , kpi_type = '#'
-    )
-    A_TAT , A_TAT_chng, tat_rep = metric_rep(
-        acq_vr_all.select(['A_TAT', 'pct_change_A_TAT' ] )
-        , 'avg. Turn Around Time'
-        , kpi_type = 'Hours'
-        , delta_type= 'inverse'
-    )
-    
-    acq_cr_all = final_acqs_cr.filter( 
-        ( pl.col('country') == 'all' ) 
-        & ( pl.col('channel') == 'all' ) 
-    )
-    conversion_rate, conversion_rate_chng, crc_rep = metric_rep( 
-        acq_cr_all.select([ 'CR_vs', 'pct_change_CR_os'])
-        , 'Conversion Rate'
-        , kpi_type = '%'
-    )
-    
-    
-    # new_deposits, new_deposits_chng, nd_rep = metric_rep( 
-    #     health_open.select('TPV' , 'pct_change_TPV' )
-    #     , 'New Deposits'
-    # )
-
-    new_clients, new_clients_chng, nc_rep = metric_rep( 
-        acq_op_all.select('U' , 'pct_change_U' )
-        , 'New Clients'
-        , kpi_type='#'
+        fig.update_layout(title_text=f'Clients Flow for {x} Service', font_size=10)
         
-    )
-
-    acq_cols[1].title("")
-    acq_cols[1].title("")
-    acq_cols[1].metric( * ql_rep )
-    acq_cols[1].metric( * cac_rep )
+        flow_cols[i].plotly_chart(fig , use_container_width=True)
     
-    
-    acq_cols[2].title("")
-    acq_cols[2].title("")
-    acq_cols[2].metric( * vc_rep )
-    acq_cols[2].metric( * tat_rep )
-    
-    acq_cols[3].title("")
-    acq_cols[3].title("")
-    acq_cols[3].metric( * nc_rep )
-    acq_cols[3].metric( * crc_rep )
-    
-    # acq_cols[2].metric('Expected Revenue', 1,1)
-    
-    # acq_cols[3].metric('New Deposits', 1,1)
-# metric_cols[3].metric('New Cross-Sell Accounts', 1,1)
-
-
+    # ==
+        
+        
+        
+       
 # =============================================================================
 # Expansion Streategy
 # =============================================================================
@@ -1507,5 +1743,144 @@ else:
         #     )
         # )
 
-#
+# =============================================================================
+# =============================================================================
+# # 
+# =============================================================================
+# =============================================================================
 
+  
+
+# ==
+    
+    
+# # =============================================================================
+# # =============================================================================
+# # #     
+# # =============================================================================
+# # =============================================================================
+
+
+    
+#     x_map = dict()
+#     level_map = { x: 0 for x in channels }
+#     x_map.update(level_0)
+#     level = { x: 0 for x in ['Locked14' , 'Flexible9', 'Fixed14'] }
+#     x_map.update(level_1)
+#     level = { x: 1 for x in ['open' , 'cross-open', 're-open'] }
+#     x_map.update(level)
+#     level_3 = { x: 2 for x in ['renew'] }
+#     x_map.update(level)
+#     level = { x: 3 for x in ['ongoing' , 'mature', 'break'] }
+#     x_map.update(level)
+    
+    
+#     extra_cols = ['service']
+    
+#     srvice_flow = filtered_trxns.filter(
+#         pl.col('trxn_type' ).is_in( ['open' , 'cross-open'])
+#     ).select( 
+#         pl.col([* extra_cols  ,'user_id' , 'trxn_datetime'])
+#         , pl.col('service').alias('trxn_type')
+
+#     )
+    
+#     trxn_flow = filtered_trxns.filter(
+#         ~pl.col('trxn_type' ).is_in( ['open' , 'cross-open'])
+#     ).filter(
+#         ~ pl.col('trxn_type' ).is_in(['top_up' , 'withdraw'])
+#     )
+    
+#     flow = pl.concat( 
+#         [ srvice_flow , trxn_flow]
+#         , how = 'diagonal'
+#     ).with_columns(
+#         pl.col( 'trxn_type' ).alias('source')
+#         , pl.col('trxn_type').shift(-1).over(['user_id', 'service']).alias('target')
+#     ).with_columns(
+#         pl.when( 
+#             pl.col('target').is_null() 
+#             & ( pl.col('trxn_group') == 'gain' )
+#         ).then( pl.lit('ongoing') ).otherwise(pl.col('target')).alias('target')
+        
+#     ).group_by(['service' , 'source','target']).len().drop_nulls().collect().to_pandas()
+    
+        
+        
+#     nodes = flow.melt( 
+#         id_vars = 'service' , value_vars = ['source','target'] , value_name = 'node' 
+#     ).drop(columns = 'variable').drop_duplicates( ignore_index =True).reset_index() 
+    
+#     flow = flow.reset_index().merge(
+#         nodes
+#         , how = 'left'
+#         , left_on = ['service' , 'source']
+#         , right_on = ['service' ,'node']
+#         , suffixes = ('' , '_source')
+#     )
+
+#     flow = flow.merge(
+#         nodes
+#         , how = 'left'
+#         , left_on = ['service' , 'target']
+#         , right_on = ['service' ,'node']
+#         , suffixes = ('' , '_target')
+#     )
+    
+#     nodes['color'] = nodes.node.map(color_map)
+    
+#     flow['color'] = flow.target.map(color_map)
+
+#     nodes['x'] = nodes.node.map(x_map)
+#     nodes['x'] = ( (nodes.x +1) / (nodes.x.max() + 2) ).clip(0.05 , 0.95)
+    
+#     nodes['y'] = nodes.groupby('x').cumcount()
+
+#     nodes['y'] = nodes.groupby('x').y.transform( lambda x: ( x + 1 ) / ( x.max() + 2 )  ).fillna(0.5).clip(0.05 , 0.95)
+            
+#     fig = go.Figure(
+#         go.Sankey(
+#             arrangement='snap',
+            
+#             node = dict(
+#                 pad = 10,
+#                 # thickness = 20,
+#                 # line = dict(color = "black", width = 0.5),
+#                 label = nodes.node,
+#                 # color = "blue" ,
+#                 # align="right"
+#                 color =  nodes.color
+#                 # , x = nodes.x
+#                 # , y = nodes.y
+#             ),
+            
+#             link = dict(
+#                 # arrowlen=15,
+#                 source = flow.index_source,  
+#                 target = flow.index_target,
+#                 value = flow.len
+#                 , color =  'rgba' + flow.color.apply( matplotlib.colors.to_rgb).apply(lambda x: tuple([*x , 0.5])).astype(str)
+                
+      
+#             )
+#         )
+#     )
+    
+#     fig.update_layout(title_text=f'Clients Flow for {x} Service', font_size=10)
+    
+    
+#     st.plotly_chart(fig , use_container_width=True)
+
+# # # ==
+    
+    
+    
+    
+    
+# =============================================================================
+# =============================================================================
+# # 
+# =============================================================================
+# =============================================================================
+
+  
