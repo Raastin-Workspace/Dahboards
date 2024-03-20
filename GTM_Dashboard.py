@@ -873,46 +873,9 @@ else:
     
 
     st.title( "Acquisition Metrics" )
-    
-    acq_cols = st.columns([3.5 ,1,1,1])
-    
-    # final_segmented_acqs = final_acqs.filter( 
-    #     (pl.col('country') != 'all')
-    #     & (pl.col('channel') != 'all')
-    #     & (pl.col('trxn_type').is_in( ['verify' ,'reject' ]) )
-    # ).with_columns( pl.col('trxn_type').replace( { 'verify' : 'Verified' , 'reject' : 'Rejected'}))
+    acq_cols = st.columns([3.5,1,1,1])
 
-    # # data = data.with_columns( pl.col('U')* K_frac) 
-    
-    
-    # fig = px.treemap(
-    #     final_segmented_acqs.to_pandas()
-    #     , path= [px.Constant('Europe'),'country' ,'channel' , 'trxn_type']
-    #     , values = "U" 
-    #     , color = 'A_CAC'
-        
-    #     , color_continuous_scale='rdylgn_r'
-    #     ,labels=dict(
-            
-    #         market_size="Market Size (M#)"
-    #         , A_CAC="Avg. CAC (€)"
-    #         , U="New Users"
-    #         , DUMpC="Depoists per Client (€)"
-    #         , country = 'Country'
-    #     )
 
-        
-    # , title= 'Current {} Acquisitions by Segment'.format(period_names[freq_index])
-    # )
-    # # fig.data[0].customdata = data.to_pandas()['A_CAC'].tolist()
-
-    # fig.data[0].texttemplate = "%{label}<br>%{value:.0f} #<br>%{percentRoot}"
-    
-    
-    # # fig.update_traces(root_color="grey")
-    # fig.update_traces(legendgrouptitle_text="AA" )
-    
-    # acq_cols[0].plotly_chart(fig,use_container_width=True)
 
     x_map = dict()
     level_0 = { x: 0 for x in channels }
@@ -1118,6 +1081,52 @@ else:
 # 
 # =============================================================================
 
+
+    acq_cols = st.columns([3.5 ,3])
+    
+    final_segmented_acqs = final_acqs.filter( 
+        (pl.col('country') != 'all')
+        & (pl.col('channel') != 'all')
+        & (pl.col('trxn_type').is_in( ['verify' ,'reject' ]) )
+    ).with_columns( pl.col('trxn_type').replace( { 'verify' : 'Verified' , 'reject' : 'Rejected'}))
+
+    # data = data.with_columns( pl.col('U')* K_frac) 
+    
+    
+    fig = px.treemap(
+        final_segmented_acqs.to_pandas()
+        , path= [px.Constant('Europe'),'country' ,'channel' , 'trxn_type']
+        , values = "U" 
+        , color = 'A_CAC'
+        
+        , color_continuous_scale='rdylgn_r'
+        ,labels=dict(
+            
+            market_size="Market Size (M#)"
+            , A_CAC="Avg. CAC (€)"
+            , U="New Users"
+            , DUMpC="Depoists per Client (€)"
+            , country = 'Country'
+        )
+
+        
+    , title= 'Current {} Acquisitions by Segment'.format(period_names[freq_index])
+    )
+    # fig.data[0].customdata = data.to_pandas()['A_CAC'].tolist()
+
+    fig.data[0].texttemplate = "%{label}<br>%{value:.0f} #<br>%{percentRoot}"
+    
+    
+    # fig.update_traces(root_color="grey")
+    fig.update_traces(legendgrouptitle_text="AA" )
+    
+    acq_cols[0].plotly_chart(fig,use_container_width=True)
+    
+    
+    
+# =============================================================================
+#     
+# =============================================================================
     final_acqs_by_channel = final_acqs.filter(
         ( pl.col('trxn_type') != 'reject' )
         & ( pl.col('channel') != 'all' )
@@ -1127,7 +1136,7 @@ else:
     channel_list = final_acqs_by_channel.channel.unique()
     count = len(channel_list)
     
-    rows = math.ceil( count / 6 )
+    rows = math.ceil( count / 3 )
     cols =  math.ceil(count / rows)
     
     fig = make_subplots( 
@@ -1170,7 +1179,7 @@ else:
     ) 
     fig.update_layout(title = f'{period_labels[freq_index]} Acquisitions Funnel by Channel')
         
-    st.plotly_chart(fig , use_container_width= True )
+    acq_cols[1].plotly_chart(fig , use_container_width= True )
 
 # =============================================================================
 # Health Metrics
