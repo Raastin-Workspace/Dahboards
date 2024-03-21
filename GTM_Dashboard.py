@@ -975,6 +975,7 @@ else:
             ),
             
             link = dict(
+                arrowlen = 5,
                 source = flow.index_source,  
                 target = flow.index_target,
                 value = flow.len
@@ -1483,7 +1484,7 @@ else:
                 ),
                 
                 link = dict(
-                    arrowlen = 15,
+                    arrowlen = 5,
                     source = flow.index_source,  
                     target = flow.index_target,
                     value = flow.len
