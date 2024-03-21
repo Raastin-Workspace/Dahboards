@@ -1483,6 +1483,7 @@ else:
                 ),
                 
                 link = dict(
+                    arrowlen = 15,
                     source = flow.index_source,  
                     target = flow.index_target,
                     value = flow.len
