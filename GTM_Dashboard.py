@@ -413,16 +413,20 @@ if len(selected_channels) > 0:
 
 
     
+channels = sorted ( filtered_rgsns.select(pl.col('channel') ).unique().collect().to_series().to_list() )
+services = sorted ( filtered_trxns.select(pl.col('service') ).unique().collect().to_series().to_list() )
+
 color_map = dict()
-channels = filtered_rgsns.select(pl.col('channel') ).unique().collect().to_series().to_list()
 channel_colors = { x: 'blue' for x in channels }
 color_map.update(channel_colors)
-gains = { x: 'green' for x in ['activate','verify', 'signup','renew', 'open' ,'cross-open','re-open' , 'ongoing']  }
-color_map.update(gains)
-losses = { x: 'red' for x in ['reject' , 'mature', 'break' ,'dropped']  }
-color_map.update(losses)
-services = { x: 'purple' for x in ['Locked14' , 'Flexible9', 'Fixed14']  }
-color_map.update(services)
+gains = ['activate','verify', 'signup','renew', 'open' ,'cross-open','re-open' , 'ongoing']
+gain_colors = { x: 'green' for x in gains  }
+color_map.update(gain_colors)
+losses = ['reject' , 'mature', 'break' ,'dropped']
+loss_colors = { x: 'red' for x in losses  }
+color_map.update(loss_colors)
+services_colors = { x: 'purple' for x in services + ['others']  }
+color_map.update(services_colors)
 
 
 
@@ -878,14 +882,18 @@ else:
 
 
     x_map = dict()
-    level_0 = { x: 0 for x in channels }
-    x_map.update(level_0)
-    level_1 = { x: 1 for x in ['verify','reject']  }
-    x_map.update(level_1)
-    level_2 = { x: 2 for x in ['activate' , 'dropped']  }
-    x_map.update(level_2)
-    level_3 = { x: 3 for x in ['Locked14' , 'Flexible9', 'Fixed14']  }
-    x_map.update(level_3)
+    level_0 = channels
+    level_mapper = { x: 0 for x in  level_0 }
+    x_map.update(level_mapper)
+    level_1 = ['verify','reject']
+    level_mapper = { x: 1 for x in  level_1 }
+    x_map.update(level_mapper)
+    level_2 = ['activate' , 'dropped']
+    level_mapper = { x: 2 for x in  level_2 }
+    x_map.update(level_mapper)
+    level_3 =  [ *services , 'others']
+    level_mapper =  { x: 3 for x in level_3 }
+    x_map.update(level_mapper)
     
     
     extra_cols = []
@@ -916,11 +924,16 @@ else:
     ).group_by([* extra_cols  , 'source','target']).len().collect().to_pandas()   
     
     unmatched = flow.groupby('target').len.sum() - flow.groupby('source').len.sum()
+    
     unmatched = unmatched[unmatched!= 0].dropna().rename('len').reset_index().rename(columns={'index':'source'})
-    unmatched['target'] = 'dropped'
+    unmatched.loc[ unmatched.source.isin(level_1), 'target'] = 'dropped'
+    unmatched.loc[ unmatched.source.isin(level_2), 'target'] = 'others'
+    unmatched = unmatched.dropna()
 
     flow = pd.concat( [flow , unmatched] )
-
+    
+    flow = flow.sort_values(['source' , 'target'])
+    
     nodes = flow.melt( 
         id_vars = extra_cols  , value_vars = ['source','target'] , value_name = 'node' 
     ).drop(columns = 'variable').drop_duplicates( ignore_index =True).reset_index() 
@@ -940,8 +953,6 @@ else:
         , right_on = [* extra_cols  ,'node']
         , suffixes = ('' , '_target')
     )
-
-
     
     nodes['color'] = nodes.node.map(color_map)
     flow['color'] = flow.target.map(color_map)
@@ -990,7 +1001,6 @@ else:
     acq_cols[3].title("")
     
     
-    
     acq_all = final_acqs.filter( 
         ( pl.col('country') == 'all' ) 
         & ( pl.col('channel') == 'all' ) 
@@ -1000,6 +1010,7 @@ else:
         pl.col('trxn_type') == 'signup'
     )
     
+
     
     qualified_leads ,qualified_leads_chng, ql_rep = metric_rep(
         acq_ql_all.select(['U' , 'pct_change_U'] )
@@ -1017,9 +1028,10 @@ else:
         pl.col('trxn_type') == 'verify'
     )
     acq_op_all = acq_all.filter(
-        pl.col('trxn_type') == 'open'
+        pl.col('trxn_type') == 'activate'
     )
    
+
     verified_clients ,  verified_clients_chng, vc_rep = metric_rep( 
         acq_vr_all.select(['U' , 'pct_change_U' ])
         , 'New Verified Signups'
@@ -1347,60 +1359,85 @@ else:
     health_cols[3].metric( * rd_rep )
     
 # =============================================================================
-#     Flow
+#   Flow
 # =============================================================================
     
 
-    flow_cols = st.columns([1,1,1])
+    flow_cols = st.columns([1] * len(services))
 
     x_map = dict()
-    
-    level_mapper = { x: 0 for x in channels }
+    level_0 = channels
+    level_mapper = { x: 0 for x in level_0 }
     x_map.update(level_mapper)
-    # level_mapper = { x: 1 for x in ['Locked14' , 'Flexible9', 'Fixed14'] }
+    # level_1 = services
+    # level_mapper = { x: 1 for x in level_1 }
     # x_map.update(level_mapper)
-    level_mapper = { x: 1 for x in [ 'open' , 'cross-open'  ] }
+    level_1 = [ 'open' , 'cross-open'  ]
+    level_mapper = { x: 1 for x in level_1 }
     x_map.update(level_mapper)
     
-    level_mapper = { x: 2.5 for x in ['re-open'] }
+    
+    
+    level_3 = ['renew' ]
+    level_mapper = { x: 2 for x in level_3 }
     x_map.update(level_mapper)
     
-    level_mapper = { x: 3.5 for x in ['renew' ] }
+    level_5 = ['ongoing' , 'mature', 'break' ]
+    level_mapper = { x: 3 for x in level_5 }
     x_map.update(level_mapper)
     
-    level_mapper = { x: 5 for x in ['ongoing' , 'mature', 'break' ] }
+    level_2 = ['re-open']
+    level_mapper = { x: 4 for x in level_2 }
     x_map.update(level_mapper)
     
-     
-    for i , x in  enumerate( ['Flexible9' , 'Locked14' , 'Fixed14'] ):
+    extra_cols = [ 'service' ]
+
+    for i , x in  enumerate( services ):
         
         service_pdf = filtered_trxns.filter( pl.col('service') == x )
-        channel_flow = service_pdf.filter(
-            pl.col('trxn_type' ).is_in(['open' , 'cross-open'])
-        ).select( 
-            pl.col(['user_id' , 'service' , 'trxn_datetime'])
-            , pl.col('channel').alias('trxn_type')
+        
+        # channel_flow = service_pdf.filter(
+        #     pl.col('trxn_type' ).is_in(['open' , 'cross-open'])
+        # ).select( 
+        #     pl.col(['user_id' , 'service' , 'trxn_datetime'])
+        #     , pl.col('channel').alias('trxn_type')
     
-        )
+        # )
         
         trxn_flow = service_pdf.filter(
             ~ pl.col('trxn_type' ).is_in(['top_up' , 'withdraw'])
         )
         
         flow = pl.concat( 
-            [ channel_flow , trxn_flow]
+            [  trxn_flow]
             , how = 'diagonal'
         ).with_columns(
-            pl.col( 'trxn_type' ).alias('source')
-            , pl.col('trxn_type').shift(-1).over(['user_id', 'service']).alias('target')
+            pl.col('trxn_type').shift(1).over([* extra_cols, 'user_id' ]).alias('source')
+            , pl.col( 'trxn_type' ).alias('target')
         ).with_columns(
             pl.when( 
-                pl.col('target').is_null() 
-                & ( pl.col('trxn_group') == 'gain' )
-            ).then( pl.lit('ongoing') ).otherwise(pl.col('target')).alias('target')
-            
-        ).group_by(['service' , 'source','target']).len().drop_nulls().collect().to_pandas()
-            
+                pl.col('source').is_null() 
+            ).then( pl.col('channel') ).otherwise(pl.col('source')).alias('source')
+        ).group_by([* extra_cols, 'source','target']).len().drop_nulls().collect().to_pandas()
+           
+
+        unmatched = flow.groupby(
+            [* extra_cols,'target']
+            ).len.sum().rename_axis(
+                [ *extra_cols,'source']
+            ) - flow.groupby(
+                    [* extra_cols,'source']
+                ).len.sum()
+        unmatched = unmatched[unmatched!= 0].dropna().rename('len').reset_index().rename(columns={'index':'source'})
+        unmatched.loc[ unmatched.source.isin(gains), 'target'] = 'ongoing'
+        unmatched = unmatched.dropna()
+        flow = pd.concat( [flow , unmatched] )
+
+        # unmatched.loc[ unmatched.source.isin(level_2), 'target'] = 'others'
+    
+        
+        flow = flow.sort_values(['source' , 'target'])
+
         nodes = flow.melt( 
             id_vars = 'service' , value_vars = ['source','target'] , value_name = 'node' 
         ).drop(columns = 'variable').drop_duplicates( ignore_index =True).reset_index() 
@@ -1421,8 +1458,6 @@ else:
             , suffixes = ('' , '_target')
         )
         
-        
-        
         nodes['color'] = nodes.node.map(color_map)
         flow['color'] = flow.target.map(color_map)
 
@@ -1431,7 +1466,10 @@ else:
         
         nodes['y'] = nodes.groupby('x').cumcount()
         nodes['y'] = nodes.groupby('x').y.transform( lambda x: ( x + 1 ) / ( x.max() + 2 )  ).fillna(0.5).clip(0.05 , 0.95)
-                
+             
+        nodes.loc[nodes.node == 're-open' , 'y'] = 0.33
+        # nodes.loc[nodes.node == 're-open' , 'x'] = 0.9
+        
         fig = go.Figure(
             go.Sankey(
                 arrangement='snap',
@@ -1456,6 +1494,7 @@ else:
         )
         
         fig.update_layout(title_text=f'Clients Flow for {x} Service', font_size=10)
+        
         
         flow_cols[i].plotly_chart(fig , use_container_width=True)
     
@@ -1774,7 +1813,7 @@ else:
 #     x_map = dict()
 #     level_map = { x: 0 for x in channels }
 #     x_map.update(level_0)
-#     level = { x: 0 for x in ['Locked14' , 'Flexible9', 'Fixed14'] }
+#     level = { x: 0 for x in services }
 #     x_map.update(level_1)
 #     level = { x: 1 for x in ['open' , 'cross-open', 're-open'] }
 #     x_map.update(level)
