@@ -903,14 +903,18 @@ else:
     ).select( 
         pl.col([* extra_cols  ,'user_id' , 'channel','trxn_type', 'trxn_datetime' ])
     )
-    
+    check  = acquisition_flow.collect().to_pandas().set_index(['user_id','trxn_type'])[[ 'trxn_datetime']].unstack()
+    check = check.droplevel(0 , axis=1)
+    st.dataframe(check)
+    st.dataframe( check [ check.verify >= check.activate] )
+    st.dataframe(acquisition_flow.collect())
     srvice_flow = filtered_trxns.filter(
         pl.col('trxn_type' ) == 'open'
     ).select( 
         pl.col([* extra_cols  ,'user_id' , 'trxn_datetime'])
         , pl.col('service').alias('trxn_type')
     )
-       
+    st.dataframe(srvice_flow.collect())  
     flow = pl.concat(
         [ acquisition_flow , srvice_flow ]
         , how = 'diagonal'
@@ -923,13 +927,16 @@ else:
         ).then( pl.col('channel') ).otherwise(pl.col('source')).alias('source')
     ).group_by([* extra_cols  , 'source','target']).len().collect().to_pandas()   
     
+    st.dataframe(flow)
+
     unmatched = flow.groupby('target').len.sum() - flow.groupby('source').len.sum()
     
     unmatched = unmatched[unmatched!= 0].dropna().rename('len').reset_index().rename(columns={'index':'source'})
     unmatched.loc[ unmatched.source.isin(level_1), 'target'] = 'dropped'
     unmatched.loc[ unmatched.source.isin(level_2), 'target'] = 'others'
     unmatched = unmatched.dropna()
-
+    st.dataframe(unmatched)
+    
     flow = pd.concat( [flow , unmatched] )
     
     flow = flow.sort_values(['source' , 'target'])
