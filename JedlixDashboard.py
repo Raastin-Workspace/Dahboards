@@ -120,7 +120,7 @@ with st.expander("File"):
     if 'trxns' not in st.session_state and f1 is not None:
     
 
-        st.session_state.trxns = pl.read_csv(file_name)
+        st.session_state.trxns = pl.read_csv(f1)
         
         st.session_state.trxns = st.session_state.trxns.with_columns( pl.col(['UTCTransactionStart' , 'UTCTransactionStop'] ).str.to_datetime(format="%d/%m/%Y%H:%M"))
         st.session_state.trxns = st.session_state.trxns.with_columns(
