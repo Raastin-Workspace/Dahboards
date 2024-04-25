@@ -51,21 +51,52 @@ period_labels = [  'Quarterly' , 'Monthly' , 'Weekly' , 'Daily' ]
 period_index = { x: i for i ,x in enumerate(period_labels)}
 
 main_vars = [ 'ConnectedTime' , 'ChargeTime' , 'TotalEnergy' ,'MaxPower' ]
+
+segmentation_vars = [
+    'ConnectedTime' , 'ChargeTime' , 'PeakConnectedTime'
+    , 'TotalEnergy' ,'MaxPower' , 'AvgChargePower'
+    , 'Utilization' ,'Throughput' , 'PeakhourShare' 
+    ]
+
+segmentation_short_vars = [
+    'CntdTm' , 'ChrgTm' , 'PkCdTm'
+    , 'TotEgy' ,'MaxPwr' , 'ACgPwr'
+    , 'Utilzn' ,'Thrput' , 'PkhShr' 
+    ]
+
+short_map = { x:y for x,y in zip(segmentation_vars , segmentation_short_vars) }
+
 result_format = {
         'SegmentShare':'{:.1f}%'
         , 'EnergyShare':'{:.1f}%'
-        , 'ConnectedTime':'{:.2f}h'
-        , 'ChargeTime':'{:.2f}h'
-        , 'Utilization':'{:.2f}%'
-        , 'PeakhourShare':'{:.2f}%'
-        , 'TotalEnergy':'{:.2f}kWh'
-        , 'Throughput':'{:.2f}kW'
-        , 'MaxPower':'{:.2f}kW'
-        , 'Avg. ConnectedTime':'{:.2f}h'
+        , 'ConnectedTime':'{:.1f}h'
+        , 'PeakConnectedTime':'{:.1f}h'
+        , 'ChargeTime':'{:.1f}h'
+        , 'Utilization':'{:.1f}%'
+        , 'PeakhourShare':'{:.1f}%'
+        , 'TotalEnergy':'{:.1f}kWh'
+        , 'Throughput':'{:.1f}kW'
+        , 'MaxPower':'{:.1f}kW'
+        , 'AvgChargePower':'{:.1f}kW'
+        , 'Avg. ConnectedTime':'{:.1f}h'
+        , 'Avg. PeakConnectedTime':'{:.1f}h'
+        , 'Avg. ChargeTime':'{:.1f}h'
         , 'Avg. Utilization':'{:.1f}%'
         , 'Avg. PeakhourShare':'{:.1f}%'
-        , 'Avg. TotalEnergy':'{:.2f}kWh'
-        , 'Avg. Throughput':'{:.2f}kW'
+        , 'Avg. TotalEnergy':'{:.1f}kWh'
+        , 'Avg. Throughput':'{:.1f}kW'
+        , 'Avg. MaxPower':'{:.1f}kW'
+
+    , 'CntdTm':'{:.1f}h' 
+    , 'ChrgTm' :'{:.1f}h'
+    , 'PkCdTm':'{:.1f}h'
+    , 'TotEgy' :'{:.1f}kWh'
+    ,'MaxPwr' :'{:.1f}kW'
+    , 'ACgPwr':'{:.1f}kW'
+    , 'Utilzn' :'{:.1f}%'
+    ,'Thrput' :'{:.1f}kW'
+    , 'PkhShr' :'{:.1f}%'
+        
 }
 segment_map = { 
         'LowUtlzOffOnPeak' : 'EnergyPool'
@@ -234,28 +265,12 @@ with st.expander("File"):
 
         st.session_state.trxns = st.session_state.trxns.with_columns(
             ( pl.col('TotalEnergy') / pl.col('ConnectedTimeRC') ).alias('Throughput')
-            , ( pl.col('ChargeTimeRC') / pl.col('ConnectedTimeRC') ).alias('Utilization')
-            , ( pl.col('PeakConnectedTime') / pl.col('ConnectedTimeRC') ).alias('PeakhourShare')
+            , ( pl.col('ChargeTimeRC') / pl.col('ConnectedTimeRC') *100 ).alias('Utilization')
+            , ( pl.col('PeakConnectedTime') / pl.col('ConnectedTimeRC') *100 ).alias('PeakhourShare')
             , ( pl.col('TotalEnergy') / pl.col('ChargeTimeRC') ).alias('AvgChargePower')
         )
 
-        st.session_state.trxns = st.session_state.trxns.with_columns(
-            pl.col('Throughput').cut( [0.333 , 0.666] , labels=[ 'LowThpt','MidThpt' ,'HghThpt']).alias('ThroughputSegment')
-            , pl.col('Utilization').cut( [0.333 , 0.666] , labels=[ 'LowUtlz','MidUtlz' ,'HghUtlz' ]).alias('UtilizationSegment')
-            , pl.col('PeakhourShare').cut( [0.333 , 0.666] , labels=[  'OffPeak', 'OffOnPeak', 'OnPeak' ]).alias('PeakhourShareSegment')
-            , pl.col('ConnectedTime').qcut( [0.025 ,0.35 , 0.65, 0.975] , labels=[ 'Quck', 'Shrt' ,'Midd' , 'Long', 'Dead' ]).alias('ConnectedTimeSegment')
-
-        )
-
-    
-        st.session_state.trxns = st.session_state.trxns.with_columns(
-            pl.concat_str( pl.col(['UtilizationSegment' , 'PeakhourShareSegment' ]) ).alias('SubSegment')
-
-        )
-
-        st.session_state.trxns = st.session_state.trxns.with_columns(
-            pl.col('SubSegment').replace(segment_map).alias('Segment')
-        )
+        
 
 
 if 'trxns' in st.session_state and 'energy_pdf' not in st.session_state:
@@ -442,6 +457,7 @@ if 'smoothed_energy_pdf' in st.session_state:
             , facet_row = 'Peakhour'
             , title= 'Avg. Charging Power Over Time'
             , color_discrete_sequence= ['green' , 'blue' , 'red' ]
+            , category_orders = { 'Peakhour': [  '0' , '1' ] }
             , line_shape='hvh'
             , height= 500
         )
@@ -456,76 +472,184 @@ if 'smoothed_energy_pdf' in st.session_state:
 if 'trxns' in st.session_state:
     with st.expander("Segmentation"):
 
-        fig = px.scatter(
-            st.session_state.trxns
-            , x = 'Utilization'
-            , y = 'PeakhourShare'
-            , color = 'Segment'
-            , width=600
-            , height=500
-            , color_discrete_map= color_map
-
+        selected_vars = st.multiselect(
+            'Segmentation Variables'
+            , segmentation_vars  
+            , max_selections = 4
         )
-        cols = st.columns((2, 5, 1))
-        cols[1].plotly_chart(fig,use_container_width=False)
-
-        sub_segment_session_share_pdf = st.session_state.trxns.group_by( 
-            [ 'PeakhourShareSegment' , 'UtilizationSegment' ]
-        ).agg( pl.col('TotalEnergy').count()/ 100 )
-        sub_segment_session_share_pdf = sub_segment_session_share_pdf.to_pandas().set_index(
-            [ 'PeakhourShareSegment' , 'UtilizationSegment' ]
-        ).unstack().droplevel(0, axis =1).sort_index(ascending=False).reindex( ['LowUtlz', 'MidUtlz', 'HghUtlz'] , axis=1)
-
-
-        sub_segment_energy_share_pdf = st.session_state.trxns.group_by( 
-            [ 'PeakhourShareSegment' , 'UtilizationSegment' ]
-        ).agg( pl.col('TotalEnergy').sum()/ st.session_state.trxns.select('TotalEnergy').sum().item() * 100 )
-        sub_segment_energy_share_pdf = sub_segment_energy_share_pdf.to_pandas().set_index(
-            [ 'PeakhourShareSegment' , 'UtilizationSegment' ]
-        ).unstack().droplevel(0, axis =1).sort_index(ascending=False).reindex( ['LowUtlz', 'MidUtlz', 'HghUtlz'] , axis=1)
-
-        cell_bg_colors = get_color_map( sub_segment_session_share_pdf )
-
-        summary = sub_segment_session_share_pdf.style.format('{:.2f}%')\
-        .set_properties(**{'text-align': 'left'})\
-        .bar(color = 'black', vmin = 0,height = 30, align = 'zero' , axis = None)\
-        .applymap(color_background)
-
-
-        segment_session_share_pdf = st.session_state.trxns.group_by( [ 'Segment' ]).agg( pl.col('TotalEnergy').count() / 100).rename({'TotalEnergy':'SegmentShare'}).to_pandas().set_index('Segment')
-
-        segment_energy_share_pdf = st.session_state.trxns.group_by( [ 'Segment' ]).agg( pl.col('TotalEnergy').sum() / st.session_state.trxns.select('TotalEnergy').sum().item() * 100).rename({'TotalEnergy':'EnergyShare'}).to_pandas().set_index('Segment')
+        var_nr = len(selected_vars)
         
-        vars = ['Segment' ,'ConnectedTime', 'Utilization', 'PeakhourShare' , 'TotalEnergy', 'Throughput' ]
-        avgs_pdf = st.session_state.trxns.group_by('Segment').agg( pl.col(vars).mean() ).to_pandas().set_index('Segment')
-        avgs_pdf[['Utilization' ,'PeakhourShare']] *= 100
+        
+        if var_nr > 0:
+            st.write(' Number of Segments:')
+            cols = st.columns(  var_nr )
+
+
+            segmentation_pdf = st.session_state.trxns#.select( selected_vars )#.sample(2500*var_nr).sort(selected_vars)
+
+            split_list = []
+
+            for i , var_name in enumerate(selected_vars):
+                # var_name = selected_vars[i]
+                short_name = short_map[selected_vars[i]]
+                p = cols[i].number_input( var_name , step = 1 , min_value = 1 , max_value = 4 )
+                split_list.append(p)
+                quantile_rank = cols[i].checkbox(f'{short_name} Rank')
+
+                
+                bins = [ i/p for i in range(p+1) ][1:-1]
+
+                if quantile_rank:
+                    segmentation_pdf = segmentation_pdf.with_columns(
+                        (pl.col(var_name).rank( method = 'random')/ pl.col(var_name).count() ).cut( bins , labels=[ f'{short_name}{i+1}' for i in range(p) ]).alias(f'{short_name}Grp')
+                    )
+ 
+                else:
+                    segmentation_pdf = segmentation_pdf.with_columns(
+                        pl.col(var_name).cut( bins , labels=[ f'{short_name}{i+1}' for i in range(p) ]).alias(f'{short_name}Grp')
+                    )
+
+                cols[i].plotly_chart( 
+                    px.histogram( 
+                        segmentation_pdf 
+                        , x = var_name
+                        , color = f'{short_name}Grp'
+                        ,histnorm='percent'
+                    ) 
+                    , use_container_width=True
+                )
+            
+
+
+            segmentation_pdf = segmentation_pdf.with_columns(
+                pl.concat_str(
+                    pl.col(
+                        [ f'{short_map[x]}Grp' for  x in selected_vars]
+                    )
+                    , separator ='_'
+                ).alias(f'SubSegment')
+            )
+
+            if var_nr > 2:
+
+
+                # fig = px.imshow(
+                #     segmentation_pdf.select( pl.selectors.numeric() ).corr().with_columns( pl.all().round(2) )
+
+                #     , height= 150 * var_nr
+                #     , width = 150 * var_nr
+                #     , zmin = -1
+                #     , text_auto=True
+                #     , title = 'Correlation Matrix'
+                # )
+                # st.plotly_chart(fig,use_container_width=True)
+                
+
+                fig = px.scatter_matrix(
+                    segmentation_pdf
+                    ,  dimensions= selected_vars
+                    , color = 'SubSegment'
+                    # , color_discrete_map= color_map
+                    , title='Distributions'
+                    , width=800
+                    , height=800
+
+                )
+                fig.update_traces(
+                    showupperhalf = False
+                    , diagonal_visible=False
+                )
+                st.plotly_chart(fig,use_container_width=True)
+            elif var_nr ==2:
+
+                # fig = px.imshow(
+                #     segmentation_pdf.select( pl.selectors.numeric() ).corr().with_columns( pl.all().round(2) )
+
+                #     , height= 150 * var_nr
+                #     , width = 150 * var_nr
+                #     , zmin = -1
+                #     , text_auto=True
+                #     , title = 'Correlation Matrix'
+                # )
+                # st.plotly_chart(fig,use_container_width=True)
+                fig = px.scatter(
+                    segmentation_pdf
+                    , x = selected_vars[0]
+                    , y = selected_vars[1]
+                    , color = 'SubSegment'
+                    # , color_discrete_map= color_map
+                    , title='Distributions'
+                    , width=400
+                    , height=400
+
+                )
+                
+                st.columns(4)[1].plotly_chart(fig,use_container_width=False)
+            else:
+                fig = px.box(
+                    segmentation_pdf
+                    , x = selected_vars[0]
+                    , color = 'SubSegment'
+                    # , color_discrete_map= color_map
+                    , title='Distributions'
+                    , width=800
+                    , height=800
+
+                )
+                
+                st.plotly_chart(fig,use_container_width=True)
+
+        avgs_pdf = segmentation_pdf.group_by('SubSegment').agg( pl.col(segmentation_vars).mean() ).to_pandas().set_index('SubSegment')
 
         final_table = pd.concat( 
             [
-                segment_session_share_pdf
-                , segment_energy_share_pdf 
-                , avgs_pdf.add_prefix('Avg. ')
+                avgs_pdf.rename(columns =short_map)#.add_prefix('Avg. ')
             ]
             , axis  = 1
         ).sort_index()
-        index_names = final_table.index.to_list()
-        final_table = final_table.reset_index(drop=True)
-        final_table.index = index_names
-        
+
         summary = final_table.style\
         .set_properties(**{'text-align': 'left'})\
         .format(result_format)\
         .bar(color = 'black', vmin = 0,height = 30, align = 'zero' , axis = 0)\
-        .set_properties(**{'background-color': 'gold'}, subset=pd.IndexSlice[ ['Busy'] , :])\
-        .set_properties(**{'background-color': 'green'}, subset=pd.IndexSlice[ ['EnergyPool'] , :])\
-        .set_properties(**{'background-color': 'grey'}, subset=pd.IndexSlice[ ['Frugal'] , :])\
-        .set_properties(**{'background-color': 'red'}, subset=pd.IndexSlice[ ['Queue'] , :])\
+        .set_properties(**{'background-color': 'white'})\
         .set_table_styles(
             [
                 {
-                    'selector': 'th',   'props': [('background-color', 'white')]
+                    'selector': 'th',   'props': [('background-color', 'white') , ('min-width', '120px')]
                 }
             ]
-        )
+        )#.set_sticky(axis="columns").set_sticky()  
+        st.components.v1.html(summary.to_html() ,scrolling=True, height=200 )
+        
+        # ns = st.number_input( 'Number of Segments' , step = 1 , min_value = 1 , max_value = 5 )
 
-        st.components.v1.html(summary.to_html() ,scrolling=True, height=200)
+        # cols = st.columns(ns)
+        # sub_segments = set( segmentation_pdf.select('SubSegment').unique().sort('SubSegment').to_series().to_list())
+        # st.write(sub_segments)
+
+        # if 'all_selected' not in st.session_state:
+            
+        #     st.write('Babe')
+
+        # # if 'clicked_clear' not in st.session_state:
+        # #     st.session_state.clicked_clear = False
+
+        # def click_button():
+        #     # st.session_state.clicked_clear = True
+        #     st.session_state.all_selected = []
+
+        # def add_segment():
+        #     # st.session_state.clicked_clear = True
+        #     st.session_state.all_selected = []
+
+        # st.button('Clear Lists', on_click=click_button)
+
+        # st.write(st.session_state.all_selected)
+
+        # for i  in range(ns):
+        #     selected = cols[i].multiselect(f'Segment{i+1}' ,sorted (sub_segments - set(st.session_state.all_selected)) )
+        #     for x in selected:
+        #         st.session_state.all_selected.append(x)
+        
+        
