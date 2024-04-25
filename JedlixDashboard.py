@@ -340,7 +340,14 @@ if 'trxns' in st.session_state:
         .background_gradient( subset = ['ChargeTime'] , cmap = 'Reds' , vmin =0 )\
         .background_gradient( subset = ['TotalEnergy'] , cmap = 'Greens' , vmin =0 )\
         .background_gradient( subset = ['MaxPower'] , cmap = 'Purples' , vmin =0 )\
-        .hide(axis="index")
+        .hide(axis="index").set_table_styles(
+            [
+                {
+                    'selector': 'th',   'props': [('background-color', 'white')]
+                }
+            ]
+        )\
+        .set_properties(**{'background-color': 'white'}, subset=['statistic'])
 
         st.components.v1.html(summary_statistics.to_html() ,scrolling=True, height=200)
 
@@ -498,6 +505,9 @@ if 'trxns' in st.session_state:
             ]
             , axis  = 1
         ).sort_index()
+        index_names = final_table.index.to_list()
+        final_table = final_table.reset_index()
+        final_table.index = index_names
         
         summary = final_table.style\
         .set_properties(**{'text-align': 'left'})\
@@ -506,6 +516,13 @@ if 'trxns' in st.session_state:
         .set_properties(**{'background-color': 'gold'}, subset=pd.IndexSlice[ ['Busy'] , :])\
         .set_properties(**{'background-color': 'green'}, subset=pd.IndexSlice[ ['EnergyPool'] , :])\
         .set_properties(**{'background-color': 'grey'}, subset=pd.IndexSlice[ ['Frugal'] , :])\
-        .set_properties(**{'background-color': 'red'}, subset=pd.IndexSlice[ ['Queue'] , :])
+        .set_properties(**{'background-color': 'red'}, subset=pd.IndexSlice[ ['Queue'] , :])\
+        .set_table_styles(
+            [
+                {
+                    'selector': 'th',   'props': [('background-color', 'white')]
+                }
+            ]
+        )
 
         st.components.v1.html(summary.to_html() ,scrolling=True, height=200)
