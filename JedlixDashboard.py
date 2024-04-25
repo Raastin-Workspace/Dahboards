@@ -348,8 +348,9 @@ if 'trxns' in st.session_state:
             ]
         )\
         .set_properties(**{'background-color': 'white'}, subset=['statistic'])
-
-        st.components.v1.html(summary_statistics.to_html() ,scrolling=True, height=200)
+        cols = st.columns((2, 5, 1))
+        with cols[1]:
+            st.components.v1.html(summary_statistics.to_html() ,scrolling=True, height=200)
 
 
         fig = px.histogram(
@@ -465,7 +466,7 @@ if 'trxns' in st.session_state:
             , color_discrete_map= color_map
 
         )
-        cols = st.columns((1, 5, 1))
+        cols = st.columns((2, 5, 1))
         cols[1].plotly_chart(fig,use_container_width=False)
 
         sub_segment_session_share_pdf = st.session_state.trxns.group_by( 
@@ -506,7 +507,7 @@ if 'trxns' in st.session_state:
             , axis  = 1
         ).sort_index()
         index_names = final_table.index.to_list()
-        final_table = final_table.reset_index()
+        final_table = final_table.reset_index(drop=True)
         final_table.index = index_names
         
         summary = final_table.style\
