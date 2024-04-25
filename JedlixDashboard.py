@@ -493,10 +493,9 @@ if 'trxns' in st.session_state:
                 # var_name = selected_vars[i]
                 short_name = short_map[selected_vars[i]]
                 p = cols[i].number_input( var_name , step = 1 , min_value = 1 , max_value = 4 )
-                split_list.append(p)
+                # split_list.append(p)
                 quantile_rank = cols[i].checkbox(f'{short_name} Rank')
 
-                
                 bins = [ i/p for i in range(p+1) ][1:-1]
 
                 if quantile_rank:
@@ -506,8 +505,9 @@ if 'trxns' in st.session_state:
  
                 else:
                     segmentation_pdf = segmentation_pdf.with_columns(
-                        pl.col(var_name).cut( bins , labels=[ f'{short_name}{i+1}' for i in range(p) ]).alias(f'{short_name}Grp')
+                        ((pl.col(var_name) - pl.col(var_name).min()) / (pl.col(var_name).max() - pl.col(var_name).min()) ).cut( bins , labels=[ f'{short_name}{i+1}' for i in range(p) ]).alias(f'{short_name}Grp')
                     )
+
 
                 cols[i].plotly_chart( 
                     px.histogram( 
@@ -515,6 +515,7 @@ if 'trxns' in st.session_state:
                         , x = var_name
                         , color = f'{short_name}Grp'
                         ,histnorm='percent'
+                        , category_orders = { f'{short_name}Grp': sorted(segmentation_pdf.select(f'{short_name}Grp').unique().to_series().to_list() )  }
                     ) 
                     , use_container_width=True
                 )
@@ -599,28 +600,28 @@ if 'trxns' in st.session_state:
                 
                 st.plotly_chart(fig,use_container_width=True)
 
-        avgs_pdf = segmentation_pdf.group_by('SubSegment').agg( pl.col(segmentation_vars).mean() ).to_pandas().set_index('SubSegment')
+            avgs_pdf = segmentation_pdf.group_by('SubSegment').agg( pl.col(segmentation_vars).mean() ).to_pandas().set_index('SubSegment')
 
-        final_table = pd.concat( 
-            [
-                avgs_pdf.rename(columns =short_map)#.add_prefix('Avg. ')
-            ]
-            , axis  = 1
-        ).sort_index()
+            final_table = pd.concat( 
+                [
+                    avgs_pdf.rename(columns =short_map)#.add_prefix('Avg. ')
+                ]
+                , axis  = 1
+            ).sort_index()
 
-        summary = final_table.style\
-        .set_properties(**{'text-align': 'left'})\
-        .format(result_format)\
-        .bar(color = 'black', vmin = 0,height = 30, align = 'zero' , axis = 0)\
-        .set_properties(**{'background-color': 'white'})\
-        .set_table_styles(
-            [
-                {
-                    'selector': 'th',   'props': [('background-color', 'white') , ('min-width', '120px')]
-                }
-            ]
-        )#.set_sticky(axis="columns").set_sticky()  
-        st.components.v1.html(summary.to_html() ,scrolling=True, height=200 )
+            summary = final_table.style\
+            .set_properties(**{'text-align': 'left'})\
+            .format(result_format)\
+            .bar(color = 'black', vmin = 0,height = 30, align = 'zero' , axis = 0)\
+            .set_properties(**{'background-color': 'white'})\
+            .set_table_styles(
+                [
+                    {
+                        'selector': 'th',   'props': [('background-color', 'white') , ('min-width', '120px')]
+                    }
+                ]
+            )#.set_sticky(axis="columns").set_sticky()  
+            st.components.v1.html(summary.to_html() ,scrolling=True, height=200 )
         
         # ns = st.number_input( 'Number of Segments' , step = 1 , min_value = 1 , max_value = 5 )
 
