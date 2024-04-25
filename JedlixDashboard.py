@@ -52,8 +52,8 @@ period_index = { x: i for i ,x in enumerate(period_labels)}
 
 main_vars = [ 'ConnectedTime' , 'ChargeTime' , 'TotalEnergy' ,'MaxPower' ]
 result_format = {
-        'SegmentShare':'{:.2f}%'
-        , 'EnergyShare':'{:.2f}%'
+        'SegmentShare':'{:.1f}%'
+        , 'EnergyShare':'{:.1f}%'
         , 'ConnectedTime':'{:.2f}h'
         , 'ChargeTime':'{:.2f}h'
         , 'Utilization':'{:.2f}%'
@@ -62,8 +62,8 @@ result_format = {
         , 'Throughput':'{:.2f}kW'
         , 'MaxPower':'{:.2f}kW'
         , 'Avg. ConnectedTime':'{:.2f}h'
-        , 'Avg. Utilization':'{:.2f}%'
-        , 'Avg. PeakhourShare':'{:.2f}%'
+        , 'Avg. Utilization':'{:.1f}%'
+        , 'Avg. PeakhourShare':'{:.1f}%'
         , 'Avg. TotalEnergy':'{:.2f}kWh'
         , 'Avg. Throughput':'{:.2f}kW'
 }
@@ -498,6 +498,8 @@ if 'trxns' in st.session_state:
         
         vars = ['Segment' ,'ConnectedTime', 'Utilization', 'PeakhourShare' , 'TotalEnergy', 'Throughput' ]
         avgs_pdf = st.session_state.trxns.group_by('Segment').agg( pl.col(vars).mean() ).to_pandas().set_index('Segment')
+        avgs_pdf[['Utilization' ,'PeakhourShare']] *= 100
+
         final_table = pd.concat( 
             [
                 segment_session_share_pdf
