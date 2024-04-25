@@ -3,3 +3,4 @@ polars
 matplotlib
 holidays
 business_duration
+seaborn
