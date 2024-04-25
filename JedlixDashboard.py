@@ -554,6 +554,7 @@ if 'trxns' in st.session_state:
                     , title='Distributions'
                     , width=800
                     , height=800
+                    , category_orders = { f'SubSegment': sorted(segmentation_pdf.select('SubSegment').unique().to_series().to_list() )  }
 
                 )
                 fig.update_traces(
@@ -582,6 +583,7 @@ if 'trxns' in st.session_state:
                     , title='Distributions'
                     , width=400
                     , height=400
+                    , category_orders = { f'SubSegment': sorted(segmentation_pdf.select('SubSegment').unique().to_series().to_list() )  }
 
                 )
                 
