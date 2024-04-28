@@ -13,12 +13,10 @@ from plotly.subplots import make_subplots
 import pandas as pd
 import numpy as np
 import seaborn as sns
-# for peak-hours calculation
 
+# for peak-hours calculation
 import datetime as dt
 import holidays
-
-# check if my function works correctly, it does but not as efficient as this lib
 from business_duration import businessDuration
 import time
 
@@ -30,43 +28,59 @@ st.set_page_config(
     , page_icon= ':chart_with_upwards_trend:'
     , layout= 'wide'
     # ,initial_sidebar_state="collapsed"
-    
 )
 
 st.title(':chart_with_upwards_trend: Studying the Charging Behavior')
 
+
 # # =============================================================================
-# # Functions & Decorators & Constant Variables
+# # Cached Resources (Shared for all users)
 # # =============================================================================
 
-period_cols= [  'quarter' , 'month' , 'week' , 'date' ]
-period_names= [  'Quarter' , 'Month' , 'Week' , 'Day' ]
 
-mperiod_cols= [ 'm'+x  for x in period_cols ]
-
-period_prefixes = [  'Q' , 'M' , 'W', 'D' ]
 period_truncs = [  '1q' , '1mo' , '1w', '1d' ]
 
-period_labels = [  'Quarterly' , 'Monthly' , 'Weekly' , 'Daily' ]
-period_index = { x: i for i ,x in enumerate(period_labels)}
+@st.cache_resource
+def get_period_labels():
+    return [  'Quarterly' , 'Monthly' , 'Weekly' , 'Daily' ]
+period_labels = get_period_labels()
 
-main_vars = [ 'ConnectedTime' , 'ChargeTime' , 'TotalEnergy' ,'MaxPower' ]
+@st.cache_resource
+def get_period_index():
+    return { x: i for i ,x in enumerate(period_labels)}
+period_index = get_period_index()
 
-segmentation_vars = [
-    'ConnectedTime' , 'ChargeTime' , 'PeakConnectedTime'
-    , 'TotalEnergy' ,'MaxPower' , 'AvgChargePower'
-    , 'Utilization' ,'Throughput' , 'PeakhourShare' 
+@st.cache_resource
+def get_main_vars():
+    return [ 'ConnectedTime' , 'ChargeTime' , 'TotalEnergy' ,'MaxPower' ]
+main_vars = get_main_vars()
+
+@st.cache_resource
+def get_segmentation_vars():
+    return [
+        'ConnectedTime' , 'ChargeTime' , 'PeakConnectedTime'
+        , 'TotalEnergy' ,'MaxPower' , 'AvgChargePower'
+        , 'Utilization' ,'Throughput' , 'PeakhourShare' 
     ]
+segmentation_vars = get_segmentation_vars()
 
-segmentation_short_vars = [
-    'CntdTm' , 'ChrgTm' , 'PkCdTm'
-    , 'TotEgy' ,'MaxPwr' , 'ACgPwr'
-    , 'Utilzn' ,'Thrput' , 'PkhShr' 
+@st.cache_resource
+def get_segmentation_short_vars():
+    return [
+        'CntdTm' , 'ChrgTm' , 'PkCdTm'
+        , 'TotEgy' ,'MaxPwr' , 'ACgPwr'
+        , 'Utilzn' ,'Thrput' , 'PkhShr' 
     ]
+segmentation_short_vars = get_segmentation_short_vars()
 
-short_map = { x:y for x,y in zip(segmentation_vars , segmentation_short_vars) }
+@st.cache_resource
+def get_short_map():
+    return { x:y for x,y in zip(segmentation_vars , segmentation_short_vars) }
+short_map = get_short_map()
 
-result_format = {
+@st.cache_resource
+def get_result_format():
+    result_format = {
         'SegmentShare':'{:.1f}%'
         , 'EnergyShare':'{:.1f}%'
         , 'ConnectedTime':'{:.1f}h'
@@ -78,203 +92,95 @@ result_format = {
         , 'Throughput':'{:.1f}kW'
         , 'MaxPower':'{:.1f}kW'
         , 'AvgChargePower':'{:.1f}kW'
-        , 'Avg. ConnectedTime':'{:.1f}h'
-        , 'Avg. PeakConnectedTime':'{:.1f}h'
-        , 'Avg. ChargeTime':'{:.1f}h'
-        , 'Avg. Utilization':'{:.1f}%'
-        , 'Avg. PeakhourShare':'{:.1f}%'
-        , 'Avg. TotalEnergy':'{:.1f}kWh'
-        , 'Avg. Throughput':'{:.1f}kW'
-        , 'Avg. MaxPower':'{:.1f}kW'
+    }
 
-    , 'CntdTm':'{:.1f}h' 
-    , 'ChrgTm' :'{:.1f}h'
-    , 'PkCdTm':'{:.1f}h'
-    , 'TotEgy' :'{:.1f}kWh'
-    ,'MaxPwr' :'{:.1f}kW'
-    , 'ACgPwr':'{:.1f}kW'
-    , 'Utilzn' :'{:.1f}%'
-    ,'Thrput' :'{:.1f}kW'
-    , 'PkhShr' :'{:.1f}%'
-        
-}
-segment_map = { 
-        'LowUtlzOffOnPeak' : 'EnergyPool'
-        , 'MidUtlzOffOnPeak' : 'EnergyPool'
-        , 'HghUtlzOffOnPeak' : 'Busy'
-        , 'LowUtlzOnPeak' : 'Queue'
-        , 'MidUtlzOnPeak' : 'Queue'
-        , 'HghUtlzOnPeak' : 'Busy'
-        , 'LowUtlzOffPeak' : 'Frugal'
-        , 'MidUtlzOffPeak' : 'Frugal'
-        , 'HghUtlzOffPeak' : 'Frugal'
-}
-color_map = { 
-        'EnergyPool' : 'green'
-        , 'Frugal' : 'grey'
-        , 'Busy' : 'gold'
-        , 'Queue' : 'red'
-        
-}
+    avg_format = { ('Avg. '+x) : y for x , y in result_format.items() }
+    short_format = { short_map[x] : y  for x , y in result_format.items() if x in short_map.keys() }
+    result_format.update(avg_format)
+    result_format.update(short_format)
+    return result_format
 
-def color_background(cell):
-  for value, color in cell_bg_colors.items():
-    if value == cell:
-      return "background-color: {}".format(color)
-  return ""  # default: do nothing
-
-def get_color_map( xdf ):
-    table_color_map = xdf.stack().reset_index()
-    table_color_map['SubSegment'] = table_color_map.UtilizationSegment.str.cat(table_color_map.PeakhourShareSegment)
-    table_color_map['Color'] = table_color_map.SubSegment.map(segment_map).map(color_map)
-    return table_color_map.set_index(0).to_dict()['Color']
-
-
-# # =============================================================================
-# # 
-# # Data Prepration
-# # 
-# # =============================================================================
-
-with st.expander("File"):
-
-    f1 = st.file_uploader(":file_folder: Upload the file" , type = (['csv' , 'xlsx']))
-
-    if f1 is None:
-        # show user message
-        st.write('Please Upload Your File')
-    else:
-
-        st.write('Your File Has Uploaded Succesfully')
-        file_name = f1.name
-        
-    if 'trxns' not in st.session_state and f1 is not None:
+result_format = get_result_format()
     
-
-        st.session_state.trxns = pl.read_csv(f1)
-        
-        st.session_state.trxns = st.session_state.trxns.with_columns( pl.col(['UTCTransactionStart' , 'UTCTransactionStop'] ).str.to_datetime(format="%d/%m/%Y%H:%M"))
-        st.session_state.trxns = st.session_state.trxns.with_columns(
-            pl.col('UTCTransactionStart').dt.replace_time_zone('UTC').dt.convert_time_zone('CET').alias('CETTransactionStart')
-            , pl.col('UTCTransactionStop').dt.replace_time_zone('UTC').dt.convert_time_zone('CET').alias('CETTransactionStop')
-        ).sort(pl.col('UTCTransactionStart') )
-
-        # I assumed here that chargin starts when transaction starts and stops right after ChargingTime, just to calculate charging volume over time
-        st.session_state.trxns = st.session_state.trxns.with_columns(
-            ( pl.col('UTCTransactionStart') + pl.duration(seconds= pl.col("ChargeTime") * 3600 ) ).clip(upper_bound= pl.col('UTCTransactionStop')).alias('UTCChargeStop')
-        )
-        st.session_state.trxns = st.session_state.trxns.with_columns(
-            pl.col('UTCChargeStop').dt.replace_time_zone('UTC').dt.convert_time_zone('CET').alias('CETChargeStop')
-        )
-        st.session_state.trxns = st.session_state.trxns.with_columns(
-            (( pl.col('UTCTransactionStop') - pl.col('UTCTransactionStart') ).dt.total_seconds()/ 3600).alias('ConnectedTimeRC')
-            , (( pl.col('UTCChargeStop') - pl.col('UTCTransactionStart') ).dt.total_seconds()/ 3600).alias('ChargeTimeRC')
-
-        )
-
-        starting_datetime_UTC = st.session_state.trxns.select( [ 'UTCTransactionStart' , 'UTCTransactionStop' ]).min().min_horizontal().item()
-        end_datetime_UTC = st.session_state.trxns.select( [ 'UTCTransactionStart' , 'UTCTransactionStop' ]).max().max_horizontal().item()
-
-        public_holidays = holidays.country_holidays(
-            country = 'NL'
-            , years=range(
-                starting_datetime_UTC.year
-                , end_datetime_UTC.year + 1
-            ) 
-            , language= 'en_US'
-            , observed= True
-        )
+# # =============================================================================
+# # Functions & Decorators & Constant Variables
+# # =============================================================================
 
 
-        # since it's peak-hours, vs. off-peak-hours, calculation is not affected by "daylightsaving observation"
-        peak_hours_start = dt.time( hour = 7 )
-        peak_hours_end = dt.time( hour = 23 )
-        # daily_peak_hours_duration = 16
-        peak_hours_offset = pd.offsets.CustomBusinessHour(
-            start = peak_hours_start
-            , end = peak_hours_end
-            , holidays = public_holidays.keys()
-        )
 
-        peak_days_offset = pd.offsets.CustomBusinessDay(
-            holidays = public_holidays.keys()
-            # , normalize = True
-        )
-        normalized_peak_days_offset = pd.offsets.CustomBusinessDay(
-            holidays = public_holidays.keys()
-            , normalize = True
-        )
+# # =============================================================================
+# # 
+# # Data Prepration & Cached Data (Not Shared)
+# # 
+# # =============================================================================
 
+# # =============================================================================
+# # # Loading The Data
+@st.cache_data( max_entries = 1 , ttl = 3600)
+def load_data( input_file ):
 
-        peak_starting_hours_offset = pd.offsets.CustomBusinessHour(
-            start = peak_hours_start
-            , end = dt.time( hour = peak_hours_start.hour , minute = 1 )
-            , holidays = public_holidays.keys()
-        )
+    return pl.read_csv(input_file)
 
-        peak_starting_hours = pd.Series(
-            data = 1
-            , index = pd.date_range(
-                start= peak_starting_hours_offset.rollforward( starting_datetime_UTC.date() )
-                , end = peak_starting_hours_offset.rollforward( end_datetime_UTC.date() )
-                , freq= peak_days_offset
+# # =============================================================================
+# # # Stage 1: Data Cleaning
+@st.cache_data(max_entries = 1 , ttl = 3600)
+def trxns_stage1( _trxns ):
+
+    _trxns = _trxns.with_columns( pl.col(['UTCTransactionStart' , 'UTCTransactionStop'] ).str.to_datetime(format="%d/%m/%Y%H:%M"))
+    _trxns = _trxns.with_columns(
+        pl.col('UTCTransactionStart').dt.replace_time_zone('UTC').dt.convert_time_zone('CET').alias('CETTransactionStart')
+        , pl.col('UTCTransactionStop').dt.replace_time_zone('UTC').dt.convert_time_zone('CET').alias('CETTransactionStop')
+    ).sort(pl.col('UTCTransactionStart') )
+
+    # I assumed here that chargin starts when transaction starts and stops right after ChargingTime, just to calculate charging volume over time
+    _trxns = _trxns.with_columns(
+        ( pl.col('UTCTransactionStart') + pl.duration(seconds= pl.col("ChargeTime") * 3600 ) ).clip(upper_bound= pl.col('UTCTransactionStop')).alias('UTCChargeStop')
+    )
+    _trxns = _trxns.with_columns(
+        pl.col('UTCChargeStop').dt.replace_time_zone('UTC').dt.convert_time_zone('CET').alias('CETChargeStop')
+    )
+    _trxns = _trxns.with_columns(
+        (( pl.col('UTCTransactionStop') - pl.col('UTCTransactionStart') ).dt.total_seconds()/ 3600).alias('ConnectedTimeRC')
+        , (( pl.col('UTCChargeStop') - pl.col('UTCTransactionStart') ).dt.total_seconds()/ 3600).alias('ChargeTimeRC')
+
+    )
+    return _trxns
+
+# # =============================================================================
+# # # Stage2: Feature Engineering
+@st.cache_data(max_entries = 1 , ttl = 3600)
+def trxns_stage2( _trxns , _public_holidays ):
+
+    
+    _trxns= _trxns.with_columns(
+        pl.struct( 
+            ['CETTransactionStart' , 'CETTransactionStop' ] 
+        ).map_elements(
+            lambda x : businessDuration(
+                startdate= x['CETTransactionStart']
+                ,enddate= x['CETTransactionStop']
+                ,starttime= dt.time( hour = 7 )
+                ,endtime= dt.time( hour = 23 )
+                ,holidaylist= _public_holidays
+                ,unit='hour'
             )
-        )
+            , return_dtype = pl.Float64
+        ).alias('PeakConnectedTime')
+    )
+    
+    _trxns = _trxns.with_columns(
+        ( pl.col('TotalEnergy') / pl.col('ConnectedTimeRC') ).alias('Throughput')
+        , ( pl.col('ChargeTimeRC') / pl.col('ConnectedTimeRC') *100 ).alias('Utilization')
+        , ( pl.col('PeakConnectedTime') / pl.col('ConnectedTimeRC') *100 ).alias('PeakhourShare')
+        , ( pl.col('TotalEnergy') / pl.col('ChargeTimeRC') ).alias('AvgChargePower')
+    )
+    return _trxns
 
-        peak_end_hours_offset = pd.offsets.CustomBusinessHour(
-            start = peak_hours_end
-            , end = dt.time( hour = peak_hours_end.hour , minute = 1 )
-            , holidays = public_holidays.keys()
-        )
-
-        peak_end_hours = pd.Series(
-            data = 0
-            , index = pd.date_range(
-                start= peak_end_hours_offset.rollforward( starting_datetime_UTC.date() )
-                , end = peak_end_hours_offset.rollforward( end_datetime_UTC.date() )
-                , freq= peak_days_offset
-            )
-        )
-        peak_hours = pd.concat( [ peak_starting_hours , peak_end_hours ] ).rename('Peakhour')
-        del peak_end_hours , peak_starting_hours
-        # peak_hours.index = peak_hours.index.map( lambda x : x.tz_localize('UTC') )
-        peak_hours.index = peak_hours.index.tz_localize('CET').tz_convert('UTC').tz_localize(None)
-        peak_hours_pdf = pl.from_pandas(peak_hours.reset_index() ).rename({"index": "UTCDatetime"})
-
-        peak_hours_pdf = peak_hours_pdf.with_columns(pl.col("UTCDatetime").dt.cast_time_unit("us"))
-        
-        if 'peak_hours_pdf' not in st.session_state:
-            st.session_state.peak_hours_pdf = peak_hours_pdf
-
-
-        st.session_state.trxns= st.session_state.trxns.with_columns(
-            pl.struct( 
-                ['CETTransactionStart' , 'CETTransactionStop' ] 
-            ).map_elements(
-                lambda x : businessDuration(
-                    startdate= x['CETTransactionStart']
-                    ,enddate= x['CETTransactionStop']
-                    ,starttime= peak_hours_start
-                    ,endtime= peak_hours_end
-                    ,holidaylist=public_holidays.keys()
-                    ,unit='hour'
-                )
-                , return_dtype = pl.Float64
-            ).alias('PeakConnectedTime')
-        )
-
-        st.session_state.trxns = st.session_state.trxns.with_columns(
-            ( pl.col('TotalEnergy') / pl.col('ConnectedTimeRC') ).alias('Throughput')
-            , ( pl.col('ChargeTimeRC') / pl.col('ConnectedTimeRC') *100 ).alias('Utilization')
-            , ( pl.col('PeakConnectedTime') / pl.col('ConnectedTimeRC') *100 ).alias('PeakhourShare')
-            , ( pl.col('TotalEnergy') / pl.col('ChargeTimeRC') ).alias('AvgChargePower')
-        )
-
-        
-
-
-if 'trxns' in st.session_state and 'energy_pdf' not in st.session_state:
-    st.session_state.energy_pdf = st.session_state.trxns.melt(
+# # =============================================================================
+# # # Extracting Granular Changes in the Network
+@st.cache_data(max_entries = 1 , ttl = 3600)
+def get_granular_changes( _trxns ):
+    _granular = _trxns.melt(
 
         id_vars= 'AvgChargePower'
         , value_vars= ['UTCTransactionStart' , 'UTCChargeStop']
@@ -283,7 +189,7 @@ if 'trxns' in st.session_state and 'energy_pdf' not in st.session_state:
     ).rename(  { 'AvgChargePower' : 'AvgChargePowerChange' } )
 
     #just to avoid relabling plots from 10k kwh to 10M Wh
-    st.session_state.energy_pdf = st.session_state.energy_pdf.with_columns( 
+    _granular = _granular.with_columns( 
         pl.col(['AvgChargePowerChange']) * \
         1000 * \
         pl.col('Point').replace(
@@ -294,38 +200,185 @@ if 'trxns' in st.session_state and 'energy_pdf' not in st.session_state:
             , return_dtype = pl.Int8
         )
     ).drop('Point' ).sort( pl.col('UTCDatetime') ) 
+    return _granular
 
-if 'energy_pdf' in st.session_state and 'smoothed_energy_pdf' not in st.session_state:
+# # =============================================================================
+# # # First Level of Smoothing Granular Changes in the Network
+@st.cache_data(max_entries = 1 , ttl = 3600)
+def get_smoothed_changes( _granular ):
     freq_min = 5
     freq = f'{freq_min}m'
     kwh_corrector = freq_min / 60
-    st.session_state.smoothed_energy_pdf = st.session_state.energy_pdf
-    st.session_state.smoothed_energy_pdf = st.session_state.smoothed_energy_pdf.with_columns( pl.col('AvgChargePowerChange').cum_sum().alias('AvgChargePower') ) 
-    # st.session_state.smoothed_energy_pdf = st.session_state.smoothed_energy_pdf.with_columns( pl.col('UTCDatetime').dt.truncate(freq).alias('UTCDatetime') )
-
-
-    st.session_state.smoothed_energy_pdf = st.session_state.smoothed_energy_pdf.group_by_dynamic('UTCDatetime' , every= freq , label='left' ).agg(
+    _smoothed = _granular
+    _smoothed = _smoothed.with_columns( pl.col('AvgChargePowerChange').cum_sum().alias('AvgChargePower') ) 
+    
+    
+    # _smoothed = _smoothed.with_columns( pl.col('UTCDatetime').dt.truncate(freq).alias('UTCDatetime') )
+    _smoothed = _smoothed.sort('UTCDatetime').group_by_dynamic('UTCDatetime' , every= freq , label='left' ).agg(
         pl.col('AvgChargePower').mean().alias('AvgChargePower_Mean')
         , pl.col('AvgChargePower').max().alias('AvgChargePower_Max')
         , pl.col('AvgChargePower').min().alias('AvgChargePower_Min')
     )
-    st.session_state.smoothed_energy_pdf = st.session_state.smoothed_energy_pdf.with_columns(
+    _smoothed = _smoothed.with_columns(
         ( pl.col('AvgChargePower_Mean') * kwh_corrector ).alias('AvgChargeVolume')
     )
-    st.session_state.smoothed_energy_pdf = st.session_state.smoothed_energy_pdf.join( 
+
+    peak_hours_pdf = peakhours(starting_datetime_UTC , end_datetime_UTC)
+    _smoothed = _smoothed.join( 
         peak_hours_pdf  , how = 'outer_coalesce' , left_on = 'UTCDatetime' , right_on = 'UTCDatetime' 
     ).sort('UTCDatetime').upsample('UTCDatetime' , every= freq)
 
-    st.session_state.smoothed_energy_pdf = st.session_state.smoothed_energy_pdf.with_columns(
+    _smoothed = _smoothed.with_columns(
         pl.all().forward_fill()
     )
 
-    st.session_state.smoothed_energy_pdf = st.session_state.smoothed_energy_pdf.with_columns(
+    _smoothed = _smoothed.with_columns(
         pl.col('Peakhour').fill_null(0)
         , pl.col('UTCDatetime').dt.replace_time_zone('UTC').dt.convert_time_zone('CET').alias('CETDatetime')
     )
+    return _smoothed
 
+# # =============================================================================
+# # Second Level of Smoothing the Changes in Network
+@st.cache_data(max_entries = 4 , ttl = 3600)
+def get_coarse_changes( _smoothed , coarse_freq):
+    _coarse = _smoothed.with_columns( pl.col('CETDatetime').dt.date().dt.truncate(coarse_freq).alias('Period') )
+
+    _coarse = _coarse.group_by(['Period' , 'Peakhour']).agg(
+        pl.col('AvgChargePower_Mean').mean().alias('AvgChargePower_Mean')
+        # ,pl.col('AvgChargePower_Mean').count().alias('AvgChargePower_count')
+        , pl.col('AvgChargePower_Max').max().alias('AvgChargePower_Max')
+        , pl.col('AvgChargePower_Min').min().alias('AvgChargePower_Min')
+        , pl.col('AvgChargeVolume').sum().alias('AvgChargeVolume')
+    ).sort('Period')
+
+    #it could raise error if sum is exactly zeros ( I add 1 day to the end!), handle?
+    def get_peakhours_share(x):
+        try:
+            return x/x.sum()
+        except:
+            return [ pd.NA ] * len(x)    
+    _coarse = _coarse.with_columns( ( pl.col('AvgChargeVolume') /   pl.col('AvgChargeVolume').sum()).over('Period').alias( 'PeakhoursShare' )  )
+
+    # # just to plotly treated as categorical. why now? speed in previous groupbys!
+    _coarse = _coarse.with_columns( pl.col('Peakhour').cast(pl.String) )
+
+    return _coarse
+
+# # =============================================================================
+# # Analysis Interval
+@st.cache_data(max_entries = 1 , ttl = 3600)
+def interval_extraction( _trxns ):
+    starting_datetime_UTC = _trxns.select( [ 'UTCTransactionStart' , 'UTCTransactionStop' ]).min().min_horizontal().item()
+    end_datetime_UTC = _trxns.select( [ 'UTCTransactionStart' , 'UTCTransactionStop' ]).max().max_horizontal().item()
+
+    return starting_datetime_UTC , end_datetime_UTC
+# # =============================================================================
+# # Public Holidays During Analysis Interval
+@st.cache_data(max_entries = 1 , ttl = 3600)
+def get_public_holidays( starting_datetime_UTC , end_datetime_UTC ):
     
+    public_holidays = holidays.country_holidays(
+        country = 'NL'
+        , years=range(
+            starting_datetime_UTC.year
+            , end_datetime_UTC.year + 1
+        ) 
+        , language= 'en_US'
+        , observed= True
+    )
+    return list(public_holidays)
+# # =============================================================================
+# # Starting and End Time of Peakhours During Analysis Interval
+@st.cache_data(max_entries = 1 , ttl = 3600)
+def peakhours( starting_datetime_UTC , end_datetime_UTC ):
+
+    public_holidays = get_public_holidays(  starting_datetime_UTC , end_datetime_UTC  )
+    # since it's peak-hours, vs. off-peak-hours, calculation is not affected by "daylightsaving observation"
+    peak_hours_start = dt.time( hour = 7 )
+    peak_hours_end = dt.time( hour = 23 )
+    # daily_peak_hours_duration = 16
+    peak_hours_offset = pd.offsets.CustomBusinessHour(
+        start = peak_hours_start
+        , end = peak_hours_end
+        , holidays = public_holidays
+    )
+
+    peak_days_offset = pd.offsets.CustomBusinessDay(
+        holidays = public_holidays
+        # , normalize = True
+    )
+    normalized_peak_days_offset = pd.offsets.CustomBusinessDay(
+        holidays = public_holidays
+        , normalize = True
+    )
+
+    peak_starting_hours_offset = pd.offsets.CustomBusinessHour(
+        start = peak_hours_start
+        , end = dt.time( hour = peak_hours_start.hour , minute = 1 )
+        , holidays = public_holidays
+    )
+
+    peak_starting_hours = pd.Series(
+        data = 1
+        , index = pd.date_range(
+            start= peak_starting_hours_offset.rollforward( starting_datetime_UTC.date() )
+            , end = peak_starting_hours_offset.rollforward( end_datetime_UTC.date() )
+            , freq= peak_days_offset
+        )
+    )
+
+    peak_end_hours_offset = pd.offsets.CustomBusinessHour(
+        start = peak_hours_end
+        , end = dt.time( hour = peak_hours_end.hour , minute = 1 )
+        , holidays = public_holidays
+    )
+
+    peak_end_hours = pd.Series(
+        data = 0
+        , index = pd.date_range(
+            start= peak_end_hours_offset.rollforward( starting_datetime_UTC.date() )
+            , end = peak_end_hours_offset.rollforward( end_datetime_UTC.date() )
+            , freq= peak_days_offset
+        )
+    )
+    peak_hours = pd.concat( [ peak_starting_hours , peak_end_hours ] ).rename('Peakhour')
+    del peak_end_hours , peak_starting_hours
+    # peak_hours.index = peak_hours.index.map( lambda x : x.tz_localize('UTC') )
+    peak_hours.index = peak_hours.index.tz_localize('CET').tz_convert('UTC').tz_localize(None)
+    peak_hours_pdf = pl.from_pandas(peak_hours.reset_index() ).rename({"index": "UTCDatetime"})
+
+    peak_hours_pdf = peak_hours_pdf.with_columns(pl.col("UTCDatetime").dt.cast_time_unit("us"))
+    
+    return peak_hours_pdf
+
+
+
+# # =============================================================================
+# # =============================================================================
+# # Visible Page
+# # =============================================================================
+# # =============================================================================
+
+# # =============================================================================
+# # Reciving the Data File from User
+# # =============================================================================
+
+with st.expander("File"):
+
+    f1 = st.file_uploader(":file_folder: Upload the file" , type = (['csv' , 'xlsx']))
+    
+    
+    if f1 is None:
+        st.write('Please Upload Your File')
+
+    else:
+
+        st.write('Your File Has Uploaded Succesfully')
+        file_name = f1.name
+        
+        global data
+        data = load_data(f1)
 
 # # =============================================================================
 # # Dashboard Inputs
@@ -342,10 +395,21 @@ if 'energy_pdf' in st.session_state and 'smoothed_energy_pdf' not in st.session_
 # # =============================================================================
 # # Let's Go EDA
 # # =============================================================================
-if 'trxns' in st.session_state:
+
+if f1 is not None:
+
     with st.expander("EDA"):
         
-        summary_statistics = st.session_state.trxns.select(main_vars).describe(percentiles=[0.05,0.5,0.95]).to_pandas()\
+        global trxns
+        trxns = trxns_stage1( data )
+        
+        starting_datetime_UTC , end_datetime_UTC = interval_extraction(trxns)
+        
+        public_holidays = get_public_holidays(starting_datetime_UTC , end_datetime_UTC)
+        
+        trxns = trxns_stage2( trxns , public_holidays )
+
+        summary_statistics = trxns.select(main_vars).describe(percentiles=[0.05,0.5,0.95]).to_pandas()\
         .loc[2:]\
         .style.format(result_format )\
         .set_properties(**{'text-align': 'left'})\
@@ -367,9 +431,8 @@ if 'trxns' in st.session_state:
         with cols[1]:
             st.components.v1.html(summary_statistics.to_html() ,scrolling=True, height=200)
 
-
         fig = px.histogram(
-            st.session_state.trxns.select(main_vars).to_pandas()#.select_dtypes('number')\
+            trxns.select(main_vars).to_pandas()#.select_dtypes('number')\
             .rename( columns = { 'ConnectedTime' : 'ConnectedTime(hours)'} )\
             .rename( columns = { 'ChargeTime' : 'ChargeTime(hours)'} )\
             .rename( columns = { 'TotalEnergy' : 'TotalEnergy(kWh)'} )\
@@ -393,39 +456,24 @@ if 'trxns' in st.session_state:
 # # =============================================================================
 
 
-if 'smoothed_energy_pdf' in st.session_state:
+if f1 is not None:
     with st.expander("Charge Power Over Time"):
+        
 
         freq_condition = 0
         freq = st.selectbox('Frequency', period_labels[freq_condition:], index= 1  )
         freq_index = period_index[freq]
-        coarse_freq = period_truncs[freq_index]
-
-        coarse_energy_pdf = st.session_state.smoothed_energy_pdf
         
-        coarse_energy_pdf = coarse_energy_pdf.with_columns( pl.col('CETDatetime').dt.date().dt.truncate(coarse_freq).alias('Period') )
-
-        coarse_energy_pdf = coarse_energy_pdf.group_by(['Period' , 'Peakhour']).agg(
-            pl.col('AvgChargePower_Mean').mean().alias('AvgChargePower_Mean')
-            # ,pl.col('AvgChargePower_Mean').count().alias('AvgChargePower_count')
-            , pl.col('AvgChargePower_Max').max().alias('AvgChargePower_Max')
-            , pl.col('AvgChargePower_Min').min().alias('AvgChargePower_Min')
-            , pl.col('AvgChargeVolume').sum().alias('AvgChargeVolume')
-        ).sort('Period')
-
-        #it could raise error if sum is exactly zeros ( I add 1 day to the end!), handle?
-        def get_peakhours_share(x):
-            try:
-                return x/x.sum()
-            except:
-                return [ pd.NA ] * len(x)    
-        coarse_energy_pdf = coarse_energy_pdf.with_columns( ( pl.col('AvgChargeVolume') /   pl.col('AvgChargeVolume').sum()).over('Period').alias( 'PeakhoursShare' )  )
-
-        # # just to plotly treated as categorical. why now? speed in previous groupbys!
-        coarse_energy_pdf = coarse_energy_pdf.with_columns( pl.col('Peakhour').cast(pl.String) )
-
+        coarse_freq = period_truncs[freq_index]
+        
+        granular_change = get_granular_changes(trxns)
+        
+        smoothed_change = get_smoothed_changes( granular_change )
+        
+        coarse_change = get_coarse_changes( smoothed_change , coarse_freq)
+        
         fig = px.bar( 
-            coarse_energy_pdf
+            coarse_change
             , x = 'Period' 
             , y = 'AvgChargeVolume'
             , color = 'Peakhour'
@@ -438,7 +486,7 @@ if 'smoothed_energy_pdf' in st.session_state:
         st.plotly_chart(fig,use_container_width=True)
 
         fig = px.bar( 
-            coarse_energy_pdf
+            coarse_change
             , x = 'Period' 
             , y = 'PeakhoursShare'
             , color = 'Peakhour'
@@ -451,7 +499,7 @@ if 'smoothed_energy_pdf' in st.session_state:
         st.plotly_chart(fig,use_container_width=True)
 
         fig = px.line(
-            coarse_energy_pdf
+            coarse_change
             , x = 'Period' 
             , y = ['AvgChargePower_Min', 'AvgChargePower_Mean' , 'AvgChargePower_Max']
             , facet_row = 'Peakhour'
@@ -469,7 +517,7 @@ if 'smoothed_energy_pdf' in st.session_state:
 # # Segmentation
 # # =============================================================================
  
-if 'trxns' in st.session_state:
+if f1 is not None:
     with st.expander("Segmentation"):
 
         selected_vars = st.multiselect(
@@ -479,21 +527,31 @@ if 'trxns' in st.session_state:
         )
         var_nr = len(selected_vars)
         
-        
         if var_nr > 0:
+            
+            # progress_text = "Operation in progress. Please wait."
+            # my_bar = st.progress(0, text=progress_text)
+
             st.write(' Number of Segments:')
             cols = st.columns(  var_nr )
 
 
-            segmentation_pdf = st.session_state.trxns#.select( selected_vars )#.sample(2500*var_nr).sort(selected_vars)
+            segmentation_pdf = trxns#.select( selected_vars )#.sample(2500*var_nr).sort(selected_vars)
 
             split_list = []
 
+
+            
+
             for i , var_name in enumerate(selected_vars):
+                
+                # my_bar.progress( (i + 1) / var_nr, text=progress_text)
+
+
                 # var_name = selected_vars[i]
                 short_name = short_map[selected_vars[i]]
                 p = cols[i].number_input( var_name , step = 1 , min_value = 1 , max_value = 4 )
-                # split_list.append(p)
+                split_list.append(p)
                 quantile_rank = cols[i].checkbox(f'{short_name} Rank')
 
                 bins = [ i/p for i in range(p+1) ][1:-1]
@@ -520,7 +578,7 @@ if 'trxns' in st.session_state:
                     , use_container_width=True
                 )
             
-
+            # my_bar.empty()
 
             segmentation_pdf = segmentation_pdf.with_columns(
                 pl.concat_str(
@@ -615,44 +673,13 @@ if 'trxns' in st.session_state:
             .set_properties(**{'text-align': 'left'})\
             .format(result_format)\
             .bar(color = 'black', vmin = 0,height = 30, align = 'zero' , axis = 0)\
-            .set_properties(**{'background-color': 'white'})\
+            .set_properties(**{'background-color': 'lightgrey'})\
             .set_table_styles(
                 [
                     {
                         'selector': 'th',   'props': [('background-color', 'white') , ('min-width', '120px')]
                     }
                 ]
-            )#.set_sticky(axis="columns").set_sticky()  
-            st.components.v1.html(summary.to_html() ,scrolling=True, height=200 )
-        
-        # ns = st.number_input( 'Number of Segments' , step = 1 , min_value = 1 , max_value = 5 )
-
-        # cols = st.columns(ns)
-        # sub_segments = set( segmentation_pdf.select('SubSegment').unique().sort('SubSegment').to_series().to_list())
-        # st.write(sub_segments)
-
-        # if 'all_selected' not in st.session_state:
+            )#.set_sticky().set_sticky(axis="columns")
+            st.components.v1.html(summary.to_html() ,scrolling=True, height=40* (sum(split_list )+ 2 ))
             
-        #     st.write('Babe')
-
-        # # if 'clicked_clear' not in st.session_state:
-        # #     st.session_state.clicked_clear = False
-
-        # def click_button():
-        #     # st.session_state.clicked_clear = True
-        #     st.session_state.all_selected = []
-
-        # def add_segment():
-        #     # st.session_state.clicked_clear = True
-        #     st.session_state.all_selected = []
-
-        # st.button('Clear Lists', on_click=click_button)
-
-        # st.write(st.session_state.all_selected)
-
-        # for i  in range(ns):
-        #     selected = cols[i].multiselect(f'Segment{i+1}' ,sorted (sub_segments - set(st.session_state.all_selected)) )
-        #     for x in selected:
-        #         st.session_state.all_selected.append(x)
-        
-        
