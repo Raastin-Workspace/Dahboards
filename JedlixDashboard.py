@@ -1,4 +1,11 @@
 # =============================================================================
+# to do list
+# =============================================================================
+# adding hash functions for polars data cache
+# adding regrouping to segmentation part
+# adding clustring models to segmentation
+
+# =============================================================================
 # libs list
 # =============================================================================
 # main ones
@@ -683,4 +690,3 @@ if f1 is not None:
             )#.set_sticky().set_sticky(axis="columns")
             st.components.v1.html(summary.to_html() ,scrolling=True, height=40* (sum(split_list )+ 2 ))
             
- 
