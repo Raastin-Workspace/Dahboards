@@ -395,7 +395,7 @@ with st.expander("File"):
 
             st.session_state.f_copy = f1
             st.session_state.file_id = uuid.uuid1() 
-            st.write( st.session_state.file_id)
+            # st.write( st.session_state.file_id)
 
             st.write('Your File Has Uploaded Succesfully')
             # file_name = f1.name
