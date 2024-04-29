@@ -73,7 +73,8 @@ main_vars = get_main_vars()
 @st.cache_resource
 def get_segmentation_vars():
     return [
-        'ConnectedTime' , 'ChargeTime' , 'PeakConnectedTime'
+        'ConnectedTime' , 'ChargeTime' , 'PeakConnectedTime' 
+        , 'ConnectedTimeLog1p' , 'ChargeTimeLog1p' , 'PeakConnectedTimeLog1p' 
         , 'TotalEnergy' ,'MaxPower' , 'AvgChargePower'
         , 'Utilization' ,'Throughput' , 'PeakhourShare' 
     ]
@@ -82,7 +83,8 @@ segmentation_vars = get_segmentation_vars()
 @st.cache_resource
 def get_segmentation_short_vars():
     return [
-        'CntdTm' , 'ChrgTm' , 'PkCdTm'
+        'CntdTm' , 'ChrgTm' , 'PkCnTm' 
+        , 'CndTLg', 'ChgTLg' , 'PCnTLg' 
         , 'TotEgy' ,'MaxPwr' , 'ACgPwr'
         , 'Utilzn' ,'Thrput' , 'PkhShr' 
     ]
@@ -101,6 +103,9 @@ def get_result_format():
         , 'ConnectedTime':'{:.1f}h'
         , 'PeakConnectedTime':'{:.1f}h'
         , 'ChargeTime':'{:.1f}h'
+        , 'ConnectedTimeLog1p':'{:.1f}h'
+        , 'PeakConnectedTimeLog1p':'{:.1f}h'
+        , 'ChargeTimeLog1p':'{:.1f}h'
         , 'Utilization':'{:.1f}%'
         , 'PeakhourShare':'{:.1f}%'
         , 'TotalEnergy':'{:.1f}kWh'
@@ -188,6 +193,9 @@ def trxns_stage2( _trxns , _public_holidays , id ):
         , ( pl.col('ChargeTimeRC') / pl.col('ConnectedTimeRC') *100 ).alias('Utilization')
         , ( pl.col('PeakConnectedTime') / pl.col('ConnectedTimeRC') *100 ).alias('PeakhourShare')
         , ( pl.col('TotalEnergy') / pl.col('ChargeTimeRC') ).alias('AvgChargePower')
+        , ( pl.col('ConnectedTimeRC').log1p() ).alias('ConnectedTimeLog1p')
+        , ( pl.col('ChargeTimeRC').log1p() ).alias('ChargeTimeLog1p')
+        , ( pl.col('PeakConnectedTime').log1p() ).alias('PeakConnectedTimeLog1p')
     )
     return _trxns
 
@@ -640,20 +648,7 @@ if f1 is not None:
                     
                 )
 
-            # cols = st.columns(  var_nr )
-            # for i , var_name in enumerate(selected_vars):
 
-            #     short_name = short_map[selected_vars[i]]
-            #     cols[i].plotly_chart( 
-            #         px.histogram( 
-            #             selected_trxns 
-            #             , x = var_name
-            #             , histnorm='percent'
-            #             # , title = f'{var_name} Distribution'
-            #             , color = 'SubSegment'
-            #         ) 
-            #         , use_container_width=True
-            #     )
 
             if var_nr > 2:
 
@@ -723,3 +718,4 @@ if f1 is not None:
                 ]
             )#.set_sticky().set_sticky(axis="columns")
             st.components.v1.html(summary.to_html() ,scrolling=True, height=40* (sum(split_list )+ 2 ))
+            
