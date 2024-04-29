@@ -3,7 +3,7 @@
 # =============================================================================
 # adding hash functions for polars data cache /done using random id
 # adding regrouping to segmentation part
-# adding clustring models to segmentation
+# adding clustring models to segmentation / first implementation done
 
 # =============================================================================
 # libs list
@@ -29,6 +29,11 @@ import time
 
 # to detoure hashing whole dataframes and files:
 import uuid
+
+# clustring
+from scipy.cluster.hierarchy import dendrogram
+from sklearn.cluster import AgglomerativeClustering
+from sklearn.cluster import KMeans
 
 # =============================================================================
 # Dashboard Config Setting & Header
@@ -543,6 +548,10 @@ if f1 is not None:
 if f1 is not None:
     with st.expander("Segmentation"):
 
+        methods = [ 'Direct' , 'KMeans' , 'Hierarchical']
+        selected_method = st.radio('Clustring Method' , methods , horizontal= True)
+
+
         selected_vars = st.multiselect(
             'Segmentation Variables'
             , segmentation_vars  
@@ -550,92 +559,113 @@ if f1 is not None:
         )
         var_nr = len(selected_vars)
         
+        
         if var_nr > 0:
             
-            # progress_text = "Operation in progress. Please wait."
-            # my_bar = st.progress(0, text=progress_text)
-
-            st.write(' Number of Segments:')
-            cols = st.columns(  var_nr )
-
-
-            segmentation_pdf = trxns#.select( selected_vars )#.sample(2500*var_nr).sort(selected_vars)
-
-            split_list = []
-
-
             
+            selected_trxns = trxns.select( selected_vars )#.sample(2500*var_nr).sort(selected_vars)
+            split_list = []
+            if selected_method == 'Direct' :
 
-            for i , var_name in enumerate(selected_vars):
+                cols = st.columns(  var_nr )
                 
-                # my_bar.progress( (i + 1) / var_nr, text=progress_text)
+            
+            
+                
+                for i , var_name in enumerate(selected_vars):
+                    
+                    short_name = short_map[selected_vars[i]]
+                    splits = cols[i].number_input( var_name , step = 1 , min_value = 1 , max_value = 4 )
+                    split_list.append( splits )
+                    quantile_rank = cols[i].checkbox(f'{short_name} Rank')
 
+                    bins = [ i/splits for i in range( splits+1 ) ][1:-1]
 
-                # var_name = selected_vars[i]
-                short_name = short_map[selected_vars[i]]
-                p = cols[i].number_input( var_name , step = 1 , min_value = 1 , max_value = 4 )
-                split_list.append(p)
-                quantile_rank = cols[i].checkbox(f'{short_name} Rank')
+                    if quantile_rank:
+                        selected_trxns = selected_trxns.with_columns(
+                            (pl.col(var_name).rank( method = 'random')/ pl.col(var_name).count() ).cut( bins , labels=[ f'{short_name}{i+1}' for i in range(splits) ]).alias(f'{short_name}Grp')
+                        )
+    
+                    else:
+                        selected_trxns = selected_trxns.with_columns(
+                            ((pl.col(var_name) - pl.col(var_name).min()) / (pl.col(var_name).max() - pl.col(var_name).min()) ).cut( bins , labels=[ f'{short_name}{i+1}' for i in range(splits) ]).alias(f'{short_name}Grp')
+                        )
 
-                bins = [ i/p for i in range(p+1) ][1:-1]
+                selected_trxns = selected_trxns.with_columns(
+                    pl.concat_str(
+                        pl.col(
+                            [ f'{short_map[x]}Grp' for  x in selected_vars]
+                        )
+                        , separator ='_'
+                    ).alias(f'SubSegment')
+                )
 
-                if quantile_rank:
-                    segmentation_pdf = segmentation_pdf.with_columns(
-                        (pl.col(var_name).rank( method = 'random')/ pl.col(var_name).count() ).cut( bins , labels=[ f'{short_name}{i+1}' for i in range(p) ]).alias(f'{short_name}Grp')
+            elif selected_method == 'KMeans' :
+                n_clusters = st.number_input( 'Number of Clusters' , step = 1 , min_value = 2 , max_value = 10 )
+
+                split_list = [1] * n_clusters
+                model_kmeans =  KMeans( 
+                    n_clusters= n_clusters 
+                    , n_init= 30
+                    , init= "random"
+                )
+                model_kmeans = model_kmeans.fit(selected_trxns)
+                selected_trxns = selected_trxns.with_columns(
+                    pl.Series( 
+                        name = 'SubSegment'
+                        , values=  model_kmeans.labels_.astype('str')
                     )
- 
-                else:
-                    segmentation_pdf = segmentation_pdf.with_columns(
-                        ((pl.col(var_name) - pl.col(var_name).min()) / (pl.col(var_name).max() - pl.col(var_name).min()) ).cut( bins , labels=[ f'{short_name}{i+1}' for i in range(p) ]).alias(f'{short_name}Grp')
-                    )
-
-
-                cols[i].plotly_chart( 
-                    px.histogram( 
-                        segmentation_pdf 
-                        , x = var_name
-                        , color = f'{short_name}Grp'
-                        ,histnorm='percent'
-                        , category_orders = { f'{short_name}Grp': sorted(segmentation_pdf.select(f'{short_name}Grp').unique().to_series().to_list() )  }
-                    ) 
-                    , use_container_width=True
+                )
+                selected_trxns = selected_trxns.with_columns(
+                     ('Grp' + pl.col('SubSegment') ).alias(f'SubSegment')
+                    
                 )
             
-            # my_bar.empty()
+            elif selected_method == 'Hierarchical' :
+                
+                n_clusters = st.number_input( 'Number of Clusters' , step = 1 , min_value = 2 , max_value = 10 )
+                split_list = [1] * n_clusters
 
-            segmentation_pdf = segmentation_pdf.with_columns(
-                pl.concat_str(
-                    pl.col(
-                        [ f'{short_map[x]}Grp' for  x in selected_vars]
+                model_hrch = AgglomerativeClustering( n_clusters= n_clusters )
+                model_hrch = model_hrch.fit( selected_trxns )
+                selected_trxns = selected_trxns.with_columns(
+                    pl.Series( 
+                        name = 'SubSegment'
+                        , values= model_hrch.labels_.astype('str')
                     )
-                    , separator ='_'
-                ).alias(f'SubSegment')
-            )
+                )
+
+                selected_trxns = selected_trxns.with_columns(
+                    ('Grp' + pl.col('SubSegment') ).alias(f'SubSegment')
+                    
+                )
+
+            # cols = st.columns(  var_nr )
+            # for i , var_name in enumerate(selected_vars):
+
+            #     short_name = short_map[selected_vars[i]]
+            #     cols[i].plotly_chart( 
+            #         px.histogram( 
+            #             selected_trxns 
+            #             , x = var_name
+            #             , histnorm='percent'
+            #             # , title = f'{var_name} Distribution'
+            #             , color = 'SubSegment'
+            #         ) 
+            #         , use_container_width=True
+            #     )
 
             if var_nr > 2:
 
-
-                # fig = px.imshow(
-                #     segmentation_pdf.select( pl.selectors.numeric() ).corr().with_columns( pl.all().round(2) )
-
-                #     , height= 150 * var_nr
-                #     , width = 150 * var_nr
-                #     , zmin = -1
-                #     , text_auto=True
-                #     , title = 'Correlation Matrix'
-                # )
-                # st.plotly_chart(fig,use_container_width=True)
-                
-
                 fig = px.scatter_matrix(
-                    segmentation_pdf
+                    selected_trxns
                     ,  dimensions= selected_vars
                     , color = 'SubSegment'
                     # , color_discrete_map= color_map
                     , title='Distributions'
                     , width=800
                     , height=800
-                    , category_orders = { f'SubSegment': sorted(segmentation_pdf.select('SubSegment').unique().to_series().to_list() )  }
+                    , category_orders = { f'SubSegment': sorted(selected_trxns.select('SubSegment').unique().to_series().to_list() )  }
 
                 )
                 fig.update_traces(
@@ -643,20 +673,10 @@ if f1 is not None:
                     , diagonal_visible=False
                 )
                 st.plotly_chart(fig,use_container_width=True)
+
             elif var_nr ==2:
-
-                # fig = px.imshow(
-                #     segmentation_pdf.select( pl.selectors.numeric() ).corr().with_columns( pl.all().round(2) )
-
-                #     , height= 150 * var_nr
-                #     , width = 150 * var_nr
-                #     , zmin = -1
-                #     , text_auto=True
-                #     , title = 'Correlation Matrix'
-                # )
-                # st.plotly_chart(fig,use_container_width=True)
                 fig = px.scatter(
-                    segmentation_pdf
+                    selected_trxns
                     , x = selected_vars[0]
                     , y = selected_vars[1]
                     , color = 'SubSegment'
@@ -664,14 +684,14 @@ if f1 is not None:
                     , title='Distributions'
                     , width=400
                     , height=400
-                    , category_orders = { f'SubSegment': sorted(segmentation_pdf.select('SubSegment').unique().to_series().to_list() )  }
+                    , category_orders = { f'SubSegment': sorted(selected_trxns.select('SubSegment').unique().to_series().to_list() )  }
 
                 )
-                
                 st.columns(4)[1].plotly_chart(fig,use_container_width=False)
+
             else:
                 fig = px.box(
-                    segmentation_pdf
+                    selected_trxns
                     , x = selected_vars[0]
                     , color = 'SubSegment'
                     # , color_discrete_map= color_map
@@ -680,10 +700,8 @@ if f1 is not None:
                     , height=800
 
                 )
-                
                 st.plotly_chart(fig,use_container_width=True)
-
-            avgs_pdf = segmentation_pdf.group_by('SubSegment').agg( pl.col(segmentation_vars).mean() ).to_pandas().set_index('SubSegment')
+            avgs_pdf = trxns.group_by(selected_trxns.select('SubSegment')).agg( pl.col(segmentation_vars).mean() ).to_pandas().set_index('SubSegment')
 
             final_table = pd.concat( 
                 [
@@ -705,108 +723,3 @@ if f1 is not None:
                 ]
             )#.set_sticky().set_sticky(axis="columns")
             st.components.v1.html(summary.to_html() ,scrolling=True, height=40* (sum(split_list )+ 2 ))
-            
-
-
-# # # # # # # # regrouping 
-        #     ns = st.number_input( 'Number of Segments' , step = 1 , min_value = 2 , max_value = 5 , key = 'nr_of_segments' )
-        #     cols = st.columns(ns)
-        #     sub_segments = set( segmentation_pdf.select('SubSegment').unique().sort('SubSegment').to_series().to_list())
-
-            
-        #     for i  in range(ns):
-        #         selected = cols[i].multiselect(f'Segment{i+1}' , sorted(sub_segments) , key = f'segment{i}_vars' )
-
-
-        #     def other_options_intersection( k ):
-        #         final_list = []
-        #         for i in range(st.session_state.nr_of_segments):
-        #             if i!= k and f'segment{i}_vars'  in st.session_state:
-        #                 final_list.append( st.session_state[f'segment{i}_vars'] )
-        #         return list( set(st.session_state[f'segment{k}_vars'] ).intersection(set( [ j for sub in final_list for j in sub] )) )
-
-        #     intersect = False
-        #     for i  in range(ns):
-        #         cols[i].write('Intersection[s]:')
-        #         if len(other_options_intersection(i)) > 0:
-        #             intersect = True
-        #             cols[i].write(other_options_intersection(i))
-
-        #     if intersect:
-        #         st.write('Re-group your options until they have no Intersection')
-        #     # # if 'segment0_vars' not in st.session_state:
-        #     # #     st.session_state['segment0_vars'] = [  ]
-        #     # # def segmentation_list_change():
-        #     # # #     st.session_state['selection_list'] = [[None] * st.session_state.nr_of_segments]
-        #     # # #     return    st.session_state['selection_list'] 
-        #     # #     for i in range(st.session_state.nr_of_segments):
-        #     # #         if f'segment{i}_vars' not in st.session_state:
-        #     # #             st.session_state[f'segment{i}_vars'] = [  ]
-
-        #     # def clear_selection():
-        #     #     # st.session_state['selected_vars'] = []
-        #     #     pass
-
-
-            
-        #     # ns = st.number_input( 'Number of Segments' , step = 1 , min_value = 1 , max_value = 5 , key = 'nr_of_segments', on_change = clear_selection )
-        #     # st.write( st.session_state)
-
-            
-        #     # cols = st.columns(ns)
-        #     # sub_segments = set( segmentation_pdf.select('SubSegment').unique().sort('SubSegment').to_series().to_list())
-        #     # st.write(sub_segments)
-
-            
-            
-        #     # # # st.write( st.session_state.selection_list)
-
-        #     # # if 'selected_vars' not in st.session_state:
-        #     # #         st.session_state['selected_vars'] = []
-
-                    
-        #     # def get_options( k ):
-        #     #     final_list = []
-        #     #     for i in range(st.session_state.nr_of_segments):
-        #     #         if i!= k and f'segment{i}_vars'  in st.session_state:
-        #     #             final_list.append( st.session_state[f'segment{i}_vars'] )
-        #     #     st.write(final_list)
-        #     #     return sorted ( set(sub_segments) - set( [ j for sub in final_list for j in sub] ) )
-
-        #     # # st.write( st.session_state.selected_vars)
-
-        #     # for i  in range(ns):
-        #     #     selected = cols[i].multiselect(f'Segment{i+1}' , get_options( i ), key = f'segment{i}_vars' )
-                
-        #     # - set(st.session_state.all_selected)
-        # # ns = st.number_input( 'Number of Segments' , step = 1 , min_value = 1 , max_value = 5 )
-
-        # # cols = st.columns(ns)
-        # # sub_segments = set( segmentation_pdf.select('SubSegment').unique().sort('SubSegment').to_series().to_list())
-        # # st.write(sub_segments)
-
-        # # if 'all_selected' not in st.session_state:
-            
-        # #     st.write('Babe')
-
-        # # # if 'clicked_clear' not in st.session_state:
-        # # #     st.session_state.clicked_clear = False
-
-        # # def click_button():
-        # #     # st.session_state.clicked_clear = True
-        # #     st.session_state.all_selected = []
-
-        # # def add_segment():
-        # #     # st.session_state.clicked_clear = True
-        # #     st.session_state.all_selected = []
-
-        # # st.button('Clear Lists', on_click=click_button)
-
-        # # st.write(st.session_state.all_selected)
-
-        # # for i  in range(ns):
-        # #     selected = cols[i].multiselect(f'Segment{i+1}' ,sorted (sub_segments - set(st.session_state.all_selected)) )
-        # #     for x in selected:
-        # #         st.session_state.all_selected.append(x)
-        
-        
