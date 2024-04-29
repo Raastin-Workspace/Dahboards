@@ -4,6 +4,6 @@ matplotlib
 holidays
 business_duration
 seaborn
-sklearn
+scikit-learn
 uuid
 scipy
