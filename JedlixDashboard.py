@@ -1,7 +1,7 @@
 # =============================================================================
 # to do list
 # =============================================================================
-# adding hash functions for polars data cache
+# adding hash functions for polars data cache /done using random id
 # adding regrouping to segmentation part
 # adding clustring models to segmentation
 
@@ -26,6 +26,9 @@ import datetime as dt
 import holidays
 from business_duration import businessDuration
 import time
+
+# to detoure hashing whole dataframes and files:
+import uuid
 
 # =============================================================================
 # Dashboard Config Setting & Header
@@ -124,14 +127,14 @@ result_format = get_result_format()
 # # =============================================================================
 # # # Loading The Data
 @st.cache_data( max_entries = 1 , ttl = 3600)
-def load_data( input_file ):
+def load_data( _input_file , id ):
 
-    return pl.read_csv(input_file)
+    return pl.read_csv(_input_file)
 
 # # =============================================================================
 # # # Stage 1: Data Cleaning
 @st.cache_data(max_entries = 1 , ttl = 3600)
-def trxns_stage1( _trxns ):
+def trxns_stage1( _trxns , id ):
 
     _trxns = _trxns.with_columns( pl.col(['UTCTransactionStart' , 'UTCTransactionStop'] ).str.to_datetime(format="%d/%m/%Y%H:%M"))
     _trxns = _trxns.with_columns(
@@ -156,7 +159,7 @@ def trxns_stage1( _trxns ):
 # # =============================================================================
 # # # Stage2: Feature Engineering
 @st.cache_data(max_entries = 1 , ttl = 3600)
-def trxns_stage2( _trxns , _public_holidays ):
+def trxns_stage2( _trxns , _public_holidays , id ):
 
     
     _trxns= _trxns.with_columns(
@@ -186,7 +189,7 @@ def trxns_stage2( _trxns , _public_holidays ):
 # # =============================================================================
 # # # Extracting Granular Changes in the Network
 @st.cache_data(max_entries = 1 , ttl = 3600)
-def get_granular_changes( _trxns ):
+def get_granular_changes( _trxns , id ):
     _granular = _trxns.melt(
 
         id_vars= 'AvgChargePower'
@@ -212,7 +215,7 @@ def get_granular_changes( _trxns ):
 # # =============================================================================
 # # # First Level of Smoothing Granular Changes in the Network
 @st.cache_data(max_entries = 1 , ttl = 3600)
-def get_smoothed_changes( _granular ):
+def get_smoothed_changes( _granular , id ):
     freq_min = 5
     freq = f'{freq_min}m'
     kwh_corrector = freq_min / 60
@@ -248,7 +251,7 @@ def get_smoothed_changes( _granular ):
 # # =============================================================================
 # # Second Level of Smoothing the Changes in Network
 @st.cache_data(max_entries = 4 , ttl = 3600)
-def get_coarse_changes( _smoothed , coarse_freq):
+def get_coarse_changes( _smoothed , coarse_freq , id ):
     _coarse = _smoothed.with_columns( pl.col('CETDatetime').dt.date().dt.truncate(coarse_freq).alias('Period') )
 
     _coarse = _coarse.group_by(['Period' , 'Peakhour']).agg(
@@ -275,7 +278,7 @@ def get_coarse_changes( _smoothed , coarse_freq):
 # # =============================================================================
 # # Analysis Interval
 @st.cache_data(max_entries = 1 , ttl = 3600)
-def interval_extraction( _trxns ):
+def interval_extraction( _trxns , id ):
     starting_datetime_UTC = _trxns.select( [ 'UTCTransactionStart' , 'UTCTransactionStop' ]).min().min_horizontal().item()
     end_datetime_UTC = _trxns.select( [ 'UTCTransactionStart' , 'UTCTransactionStop' ]).max().max_horizontal().item()
 
@@ -375,17 +378,30 @@ with st.expander("File"):
 
     f1 = st.file_uploader(":file_folder: Upload the file" , type = (['csv' , 'xlsx']))
     
+    if 'f_copy' not in st.session_state:
+        st.session_state['f_copy'] = None
     
+    if 'file_id' not in st.session_state:
+        st.session_state['file_id'] = None
+
+
     if f1 is None:
         st.write('Please Upload Your File')
+        
 
     else:
+        if st.session_state.f_copy is None or st.session_state.f_copy != f1:
+            
 
-        st.write('Your File Has Uploaded Succesfully')
-        file_name = f1.name
+            st.session_state.f_copy = f1
+            st.session_state.file_id = uuid.uuid1() 
+            st.write( st.session_state.file_id)
+
+            st.write('Your File Has Uploaded Succesfully')
+            # file_name = f1.name
         
         global data
-        data = load_data(f1)
+        data = load_data(f1 , st.session_state.file_id)
 
 # # =============================================================================
 # # Dashboard Inputs
@@ -408,13 +424,13 @@ if f1 is not None:
     with st.expander("EDA"):
         
         global trxns
-        trxns = trxns_stage1( data )
+        trxns = trxns_stage1( data , st.session_state.file_id )
         
-        starting_datetime_UTC , end_datetime_UTC = interval_extraction(trxns)
+        starting_datetime_UTC , end_datetime_UTC = interval_extraction(trxns , st.session_state.file_id)
         
         public_holidays = get_public_holidays(starting_datetime_UTC , end_datetime_UTC)
         
-        trxns = trxns_stage2( trxns , public_holidays )
+        trxns = trxns_stage2( trxns , public_holidays  , st.session_state.file_id)
 
         summary_statistics = trxns.select(main_vars).describe(percentiles=[0.05,0.5,0.95]).to_pandas()\
         .loc[2:]\
@@ -473,11 +489,11 @@ if f1 is not None:
         
         coarse_freq = period_truncs[freq_index]
         
-        granular_change = get_granular_changes(trxns)
+        granular_change = get_granular_changes(trxns , st.session_state.file_id)
         
-        smoothed_change = get_smoothed_changes( granular_change )
+        smoothed_change = get_smoothed_changes( granular_change  , st.session_state.file_id)
         
-        coarse_change = get_coarse_changes( smoothed_change , coarse_freq)
+        coarse_change = get_coarse_changes( smoothed_change , coarse_freq , st.session_state.file_id)
         
         fig = px.bar( 
             coarse_change
@@ -690,3 +706,107 @@ if f1 is not None:
             )#.set_sticky().set_sticky(axis="columns")
             st.components.v1.html(summary.to_html() ,scrolling=True, height=40* (sum(split_list )+ 2 ))
             
+
+
+# # # # # # # # regrouping 
+        #     ns = st.number_input( 'Number of Segments' , step = 1 , min_value = 2 , max_value = 5 , key = 'nr_of_segments' )
+        #     cols = st.columns(ns)
+        #     sub_segments = set( segmentation_pdf.select('SubSegment').unique().sort('SubSegment').to_series().to_list())
+
+            
+        #     for i  in range(ns):
+        #         selected = cols[i].multiselect(f'Segment{i+1}' , sorted(sub_segments) , key = f'segment{i}_vars' )
+
+
+        #     def other_options_intersection( k ):
+        #         final_list = []
+        #         for i in range(st.session_state.nr_of_segments):
+        #             if i!= k and f'segment{i}_vars'  in st.session_state:
+        #                 final_list.append( st.session_state[f'segment{i}_vars'] )
+        #         return list( set(st.session_state[f'segment{k}_vars'] ).intersection(set( [ j for sub in final_list for j in sub] )) )
+
+        #     intersect = False
+        #     for i  in range(ns):
+        #         cols[i].write('Intersection[s]:')
+        #         if len(other_options_intersection(i)) > 0:
+        #             intersect = True
+        #             cols[i].write(other_options_intersection(i))
+
+        #     if intersect:
+        #         st.write('Re-group your options until they have no Intersection')
+        #     # # if 'segment0_vars' not in st.session_state:
+        #     # #     st.session_state['segment0_vars'] = [  ]
+        #     # # def segmentation_list_change():
+        #     # # #     st.session_state['selection_list'] = [[None] * st.session_state.nr_of_segments]
+        #     # # #     return    st.session_state['selection_list'] 
+        #     # #     for i in range(st.session_state.nr_of_segments):
+        #     # #         if f'segment{i}_vars' not in st.session_state:
+        #     # #             st.session_state[f'segment{i}_vars'] = [  ]
+
+        #     # def clear_selection():
+        #     #     # st.session_state['selected_vars'] = []
+        #     #     pass
+
+
+            
+        #     # ns = st.number_input( 'Number of Segments' , step = 1 , min_value = 1 , max_value = 5 , key = 'nr_of_segments', on_change = clear_selection )
+        #     # st.write( st.session_state)
+
+            
+        #     # cols = st.columns(ns)
+        #     # sub_segments = set( segmentation_pdf.select('SubSegment').unique().sort('SubSegment').to_series().to_list())
+        #     # st.write(sub_segments)
+
+            
+            
+        #     # # # st.write( st.session_state.selection_list)
+
+        #     # # if 'selected_vars' not in st.session_state:
+        #     # #         st.session_state['selected_vars'] = []
+
+                    
+        #     # def get_options( k ):
+        #     #     final_list = []
+        #     #     for i in range(st.session_state.nr_of_segments):
+        #     #         if i!= k and f'segment{i}_vars'  in st.session_state:
+        #     #             final_list.append( st.session_state[f'segment{i}_vars'] )
+        #     #     st.write(final_list)
+        #     #     return sorted ( set(sub_segments) - set( [ j for sub in final_list for j in sub] ) )
+
+        #     # # st.write( st.session_state.selected_vars)
+
+        #     # for i  in range(ns):
+        #     #     selected = cols[i].multiselect(f'Segment{i+1}' , get_options( i ), key = f'segment{i}_vars' )
+                
+        #     # - set(st.session_state.all_selected)
+        # # ns = st.number_input( 'Number of Segments' , step = 1 , min_value = 1 , max_value = 5 )
+
+        # # cols = st.columns(ns)
+        # # sub_segments = set( segmentation_pdf.select('SubSegment').unique().sort('SubSegment').to_series().to_list())
+        # # st.write(sub_segments)
+
+        # # if 'all_selected' not in st.session_state:
+            
+        # #     st.write('Babe')
+
+        # # # if 'clicked_clear' not in st.session_state:
+        # # #     st.session_state.clicked_clear = False
+
+        # # def click_button():
+        # #     # st.session_state.clicked_clear = True
+        # #     st.session_state.all_selected = []
+
+        # # def add_segment():
+        # #     # st.session_state.clicked_clear = True
+        # #     st.session_state.all_selected = []
+
+        # # st.button('Clear Lists', on_click=click_button)
+
+        # # st.write(st.session_state.all_selected)
+
+        # # for i  in range(ns):
+        # #     selected = cols[i].multiselect(f'Segment{i+1}' ,sorted (sub_segments - set(st.session_state.all_selected)) )
+        # #     for x in selected:
+        # #         st.session_state.all_selected.append(x)
+        
+        
