@@ -2,9 +2,9 @@
 # to do list
 # =============================================================================
 # adding hash functions for polars data cache /done using random id
-# adding regrouping to segmentation part
+# adding regrouping to segmentation part /done
 # adding clustring models to segmentation / first implementation done
-
+# adding partial fragments / first implementation done
 # =============================================================================
 # libs list
 # =============================================================================
@@ -14,7 +14,6 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-
 
 # others
 import pandas as pd
@@ -125,7 +124,27 @@ result_format = get_result_format()
 # # =============================================================================
 # # Functions & Decorators & Constant Variables
 # # =============================================================================
+def clear_regrouping():
+    for i  in range(st.session_state.nr_of_segments):
+        if f'segment{i}_grps' in st.session_state:
+                st.session_state[f'segment{i}_grps'] = []
 
+
+def table2html( table ):
+    summary = table.style\
+    .set_properties(**{'text-align': 'left'})\
+    .format(result_format)\
+    .bar(color = 'black', vmin = 0,height = 30, align = 'zero' , axis = 0)\
+    .set_properties(**{'background-color': 'lightgrey'})\
+    .set_table_styles(
+        [
+            {
+                'selector': 'th',   'props': [('background-color', 'white') , ('min-width', '120px')]
+            }
+        ]
+    )#.set_sticky().set_sticky(axis="columns")
+    st.components.v1.html(summary.to_html() ,scrolling=True, height=40* (len(table )+ 2 ))
+ 
 
 
 # # =============================================================================
@@ -416,6 +435,23 @@ with st.expander("File"):
         global data
         data = load_data(f1 , st.session_state.file_id)
 
+        global trxns
+        trxns = trxns_stage1( data , st.session_state.file_id )
+        
+        starting_datetime_UTC , end_datetime_UTC = interval_extraction(trxns , st.session_state.file_id)
+        
+        public_holidays = get_public_holidays(starting_datetime_UTC , end_datetime_UTC)
+        
+        trxns = trxns_stage2( trxns , public_holidays  , st.session_state.file_id)
+
+        global granular_change
+        granular_change = get_granular_changes(trxns , st.session_state.file_id)
+        
+        global smoothed_change
+        smoothed_change = get_smoothed_changes( granular_change  , st.session_state.file_id)
+        
+        
+
 # # =============================================================================
 # # Dashboard Inputs
 # # =============================================================================
@@ -431,20 +467,10 @@ with st.expander("File"):
 # # =============================================================================
 # # Let's Go EDA
 # # =============================================================================
-
-if f1 is not None:
-
+@st.experimental_fragment
+def EDA():
     with st.expander("EDA"):
         
-        global trxns
-        trxns = trxns_stage1( data , st.session_state.file_id )
-        
-        starting_datetime_UTC , end_datetime_UTC = interval_extraction(trxns , st.session_state.file_id)
-        
-        public_holidays = get_public_holidays(starting_datetime_UTC , end_datetime_UTC)
-        
-        trxns = trxns_stage2( trxns , public_holidays  , st.session_state.file_id)
-
         summary_statistics = trxns.select(main_vars).describe(percentiles=[0.05,0.5,0.95]).to_pandas()\
         .loc[2:]\
         .style.format(result_format )\
@@ -487,24 +513,22 @@ if f1 is not None:
         fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
         st.plotly_chart(fig,use_container_width=True)
 
+if f1 is not None:
+    EDA()
+
+
 # # =============================================================================
 # # Charge Power Over Time
 # # =============================================================================
-
-
-if f1 is not None:
+@st.experimental_fragment
+def charging_power():
     with st.expander("Charge Power Over Time"):
         
-
         freq_condition = 0
         freq = st.selectbox('Frequency', period_labels[freq_condition:], index= 1  )
         freq_index = period_index[freq]
         
         coarse_freq = period_truncs[freq_index]
-        
-        granular_change = get_granular_changes(trxns , st.session_state.file_id)
-        
-        smoothed_change = get_smoothed_changes( granular_change  , st.session_state.file_id)
         
         coarse_change = get_coarse_changes( smoothed_change , coarse_freq , st.session_state.file_id)
         
@@ -549,15 +573,82 @@ if f1 is not None:
         st.plotly_chart(fig,use_container_width=True)
         # fig.update_xaxes(tickangle=-80)
 
+if f1 is not None:
+    charging_power()
+
 # # =============================================================================
 # # Segmentation
 # # =============================================================================
+   
+@st.experimental_fragment
+def regrouping(selected_trxns):
+    st.write('Re-grouping')
+    ns = st.number_input( 'Number of Segments' , step = 1 , min_value = 2 , max_value = 5 , key = 'nr_of_segments' )
+    cols = st.columns(ns)
+    sub_segments = set( selected_trxns.select('SubSegment').unique().sort('SubSegment').to_series().to_list())
+
+    def all_selected_subs(k):
+        l = []
+        for i  in range(ns):
+            if k != i and f'segment{i}_grps' in st.session_state:
+                l.extend(st.session_state[f'segment{i}_grps'])
+        return l
+    
+    def selected_subs(k):
+        l = []
+        
+        if f'segment{i}_grps' in st.session_state:
+                l.extend(st.session_state[f'segment{i}_grps'])
+        return l
+    
+
+    for i  in range(ns):
+        name = cols[i].text_input( 
+            f'Label' 
+            , value= f'Segment{i+1}' 
+            , key = f'segment{i}_label' 
+        )
+        # st.write(i)
+        # st.write(all_selected_subs(i))
+        # st.write(selected_subs(i))
+        selected = cols[i].multiselect(
+            f'Sub Segments' 
+            , sorted( sub_segments - set(all_selected_subs(i)) )
+            , key = f'segment{i}_grps'
+            , default = selected_subs(i)
+        )
+
+    d = {}
+    for i in range(ns):
+        for x in selected_subs(i):
+            d[x] = st.session_state[f'segment{i}_label']
+    
+    selected_trxns = selected_trxns.with_columns(
+        pl.col('SubSegment').replace(d).alias('Segment')
+    )
+
+
+    avgs_pdf = trxns.group_by(selected_trxns.select('Segment')).agg( pl.col(segmentation_vars).mean() ).to_pandas().set_index('Segment')
+
+    final_table = pd.concat( 
+        [
+            avgs_pdf.rename(columns =short_map)#.add_prefix('Avg. ')
+        ]
+        , axis  = 1
+    ).sort_index()
+
+    table2html( final_table )
  
 if f1 is not None:
     with st.expander("Segmentation"):
 
         methods = [ 'Direct' , 'KMeans' , 'Hierarchical']
-        selected_method = st.radio('Clustring Method' , methods , horizontal= True)
+        selected_method = st.radio(
+            'Clustring Method' 
+            , methods 
+            , horizontal= True
+            , on_change = clear_regrouping
+        )
 
 
         selected_vars = st.multiselect(
@@ -577,8 +668,6 @@ if f1 is not None:
 
                 cols = st.columns(  var_nr )
                 
-            
-            
                 
                 for i , var_name in enumerate(selected_vars):
                     
@@ -648,8 +737,6 @@ if f1 is not None:
                     
                 )
 
-
-
             if var_nr > 2:
 
                 fig = px.scatter_matrix(
@@ -705,17 +792,22 @@ if f1 is not None:
                 , axis  = 1
             ).sort_index()
 
-            summary = final_table.style\
-            .set_properties(**{'text-align': 'left'})\
-            .format(result_format)\
-            .bar(color = 'black', vmin = 0,height = 30, align = 'zero' , axis = 0)\
-            .set_properties(**{'background-color': 'lightgrey'})\
-            .set_table_styles(
-                [
-                    {
-                        'selector': 'th',   'props': [('background-color', 'white') , ('min-width', '120px')]
-                    }
-                ]
-            )#.set_sticky().set_sticky(axis="columns")
-            st.components.v1.html(summary.to_html() ,scrolling=True, height=40* (sum(split_list )+ 2 ))
-            
+            table2html( final_table )
+
+            # cols = st.columns(  var_nr )
+            # for i , var_name in enumerate(selected_vars):
+
+            #     short_name = short_map[selected_vars[i]]
+            #     cols[i].plotly_chart( 
+            #         px.histogram( 
+            #             selected_trxns 
+            #             , x = var_name
+            #             , histnorm='percent'
+            #             # , title = f'{var_name} Distribution'
+            #             , color = 'SubSegment'
+            #         ) 
+            #         , use_container_width=True
+            #     )
+
+# # # # # # # regrouping
+            regrouping(selected_trxns) 
