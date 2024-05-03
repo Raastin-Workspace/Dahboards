@@ -2,9 +2,9 @@
 # to do list
 # =============================================================================
 # adding hash functions for polars data cache /done using random id
-# adding regrouping to segmentation part /done
+# adding regrouping to segmentation part
 # adding clustring models to segmentation / first implementation done
-# adding partial fragments / first implementation done
+
 # =============================================================================
 # libs list
 # =============================================================================
@@ -34,9 +34,14 @@ from scipy.cluster.hierarchy import dendrogram
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.cluster import KMeans
 
+# handling universal maps
+from collections import defaultdict
+# handling colors more elegantly
+from functools import reduce
 # =============================================================================
 # Dashboard Config Setting & Header
 # =============================================================================
+
 st.set_page_config(
     page_title= 'Jedlix Dashboard'
     , page_icon= ':chart_with_upwards_trend:'
@@ -46,13 +51,14 @@ st.set_page_config(
 
 st.title(':chart_with_upwards_trend: Studying the Charging Behavior')
 
-
 # # =============================================================================
 # # Cached Resources (Shared for all users)
 # # =============================================================================
 
-
-period_truncs = [  '1q' , '1mo' , '1w', '1d' ]
+@st.cache_resource
+def get_period_truncs():
+    return [  '1q' , '1mo' , '1w', '1d' ]
+period_truncs = get_period_truncs()
 
 @st.cache_resource
 def get_period_labels():
@@ -65,88 +71,171 @@ def get_period_index():
 period_index = get_period_index()
 
 @st.cache_resource
-def get_main_vars():
+def get_dataset_vars():
     return [ 'ConnectedTime' , 'ChargeTime' , 'TotalEnergy' ,'MaxPower' ]
-main_vars = get_main_vars()
+dataset_vars = get_dataset_vars()
 
 @st.cache_resource
-def get_segmentation_vars():
+def get_engineered_vars():
+    return [ 
+        'PeakConnectedTime' 
+        , 'AvgChargePower' , 'Utilization' ,'Throughput' , 'PeakhourShare' 
+         
+          ]
+engineered_vars = get_engineered_vars()
+
+@st.cache_resource
+def get_transformed_vars():
+    return [ 
+        'ConnectedTimeLog1p' , 'ChargeTimeLog1p' , 'PeakConnectedTimeLog1p'
+         
+          ]
+transformed_vars = get_transformed_vars()
+
+@st.cache_resource
+def get_analysis_vars():
     return [
         'ConnectedTime' , 'ChargeTime' , 'PeakConnectedTime' 
-        , 'ConnectedTimeLog1p' , 'ChargeTimeLog1p' , 'PeakConnectedTimeLog1p' 
         , 'TotalEnergy' ,'MaxPower' , 'AvgChargePower'
         , 'Utilization' ,'Throughput' , 'PeakhourShare' 
     ]
-segmentation_vars = get_segmentation_vars()
+analysis_vars = get_analysis_vars()
+
+
 
 @st.cache_resource
-def get_segmentation_short_vars():
+def get_analysis_short_vars():
     return [
         'CntdTm' , 'ChrgTm' , 'PkCnTm' 
-        , 'CndTLg', 'ChgTLg' , 'PCnTLg' 
         , 'TotEgy' ,'MaxPwr' , 'ACgPwr'
-        , 'Utilzn' ,'Thrput' , 'PkhShr' 
+        , 'Utilzn' ,'Thrput' , 'PkhShr'
+        , 'CndTLg', 'ChgTLg' , 'PCnTLg' 
     ]
-segmentation_short_vars = get_segmentation_short_vars()
+analysis_short_vars = get_analysis_short_vars()
 
 @st.cache_resource
-def get_short_map():
-    return { x:y for x,y in zip(segmentation_vars , segmentation_short_vars) }
-short_map = get_short_map()
+def get_short_vars_map():
+    short_vars_map = { x:y for x,y in zip(analysis_vars + transformed_vars , analysis_short_vars ) }
+    return defaultdict( lambda x : x[:6] , short_vars_map)
+short_vars_map = get_short_vars_map()
+
+@st.cache_resource
+def get_result_metric():
+    result_metric = {
+          'ConnectedTime':'h'
+        , 'ChargeTime':'h'
+        , 'PeakConnectedTime':'h'
+        , 'TotalEnergy':'kWh'
+        , 'MaxPower':'kW'
+        , 'AvgChargePower':'kW'
+        , 'Utilization':'%'
+        , 'Throughput':'kW'
+        , 'PeakhourShare':'%'
+
+        , 'ConnectedTimeLog1p':'L(1+h)'
+        , 'ChargeTimeLog1p':'L(1+h)'
+        , 'PeakConnectedTimeLog1p':'L(1+h)'
+
+        # , 'SegmentShare':'%'
+        # , 'EnergyShare':'%'
+        
+    }
+
+    avg_metric = { ('Avg. '+x) : y for x , y in result_metric.items() }
+    short_metric = { short_vars_map[x] : y  for x , y in result_metric.items() if x in short_vars_map.keys() }
+    result_metric.update(avg_metric)
+    result_metric.update(short_metric)
+    return defaultdict( lambda : '{:1.f}' , result_metric )
+
+result_metric = get_result_metric()
 
 @st.cache_resource
 def get_result_format():
-    result_format = {
-        'SegmentShare':'{:.1f}%'
-        , 'EnergyShare':'{:.1f}%'
-        , 'ConnectedTime':'{:.1f}h'
-        , 'PeakConnectedTime':'{:.1f}h'
-        , 'ChargeTime':'{:.1f}h'
-        , 'ConnectedTimeLog1p':'{:.1f}h'
-        , 'PeakConnectedTimeLog1p':'{:.1f}h'
-        , 'ChargeTimeLog1p':'{:.1f}h'
-        , 'Utilization':'{:.1f}%'
-        , 'PeakhourShare':'{:.1f}%'
-        , 'TotalEnergy':'{:.1f}kWh'
-        , 'Throughput':'{:.1f}kW'
-        , 'MaxPower':'{:.1f}kW'
-        , 'AvgChargePower':'{:.1f}kW'
-    }
+    # result_format = {
+    #       'ConnectedTime':'{:.1f} h'
+    #     , 'ChargeTime':'{:.1f} h'
+    #     , 'PeakConnectedTime':'{:.1f} h'
+    #     , 'TotalEnergy':'{:.1f} kWh'
+    #     , 'MaxPower':'{:.1f} kW'
+    #     , 'AvgChargePower':'{:.1f} kW'
+    #     , 'Utilization':'{:.1f} %'
+    #     , 'Throughput':'{:.1f} kW'
+    #     , 'PeakhourShare':'{:.1f} %'
 
-    avg_format = { ('Avg. '+x) : y for x , y in result_format.items() }
-    short_format = { short_map[x] : y  for x , y in result_format.items() if x in short_map.keys() }
-    result_format.update(avg_format)
-    result_format.update(short_format)
-    return result_format
+    #     , 'ConnectedTimeLog1p':'{:.1f} L(h)'
+    #     , 'ChargeTimeLog1p':'{:.1f} L(h)'
+    #     , 'PeakConnectedTimeLog1p':'{:.1f} L(h)'
+
+    #     # , 'SegmentShare':'{:.1f} %'
+    #     # , 'EnergyShare':'{:.1f} %'
+        
+    # }
+
+    # avg_format = { ('Avg. '+x) : y for x , y in result_format.items() }
+    # short_format = { short_vars_map[x] : y  for x , y in result_format.items() if x in short_vars_map.keys() }
+    # result_format.update(avg_format)
+    # result_format.update(short_format)
+    # return defaultdict( lambda : '{:1.f}' , result_format )
+    return '{:.1f}'
 
 result_format = get_result_format()
+
+@st.cache_resource
+def get_result_colors():
+
+    color_palette = "tab10"
+    result_color = { k:v for k , v in zip (analysis_vars , sns.color_palette( color_palette , n_colors=  len (analysis_vars) ).as_hex() ) } 
+
+    avg_color = { ('Avg. '+x) : y for x , y in result_color.items() }
+    short_color = { short_vars_map[x] : y  for x , y in result_color.items() if x in short_vars_map.keys() }
+    transformed_color = { k:v for k , v in zip (transformed_vars , sns.color_palette(color_palette , n_colors=  len (transformed_vars) ).as_hex() ) } 
+    short_transformed_color = { short_vars_map[x] : y  for x , y in transformed_color.items() if x in short_vars_map.keys() }
+
+    result_color.update(avg_color)
+    result_color.update(short_color)
+    result_color.update(transformed_color)
+    result_color.update(short_transformed_color)
+    return defaultdict( lambda: 'white' , result_color)
+
+result_colors = get_result_colors()
     
 # # =============================================================================
 # # Functions & Decorators & Constant Variables
 # # =============================================================================
 def clear_regrouping():
+
     if 'nr_of_segments' in st.session_state:
         for i  in range(st.session_state.nr_of_segments):
             if f'segment{i}_grps' in st.session_state:
-                    st.session_state[f'segment{i}_grps'] = []
+                st.session_state[f'segment{i}_grps'] = []
 
 
-def table2html( table ):
-    summary = table.style\
+def table2html( table , vmin = 0):
+    styler = table.style\
     .set_properties(**{'text-align': 'left'})\
     .format(result_format)\
     .bar(color = 'black', vmin = 0,height = 30, align = 'zero' , axis = 0)\
-    .set_properties(**{'background-color': 'lightgrey'})\
     .set_table_styles(
         [
             {
-                'selector': 'th',   'props': [('background-color', 'white') , ('min-width', '120px')]
+                'selector': 'th',   'props': [('background-color', 'white') , ('min-width', '75px')]
             }
         ]
     )#.set_sticky().set_sticky(axis="columns")
-    st.components.v1.html(summary.to_html() ,scrolling=True, height=40* (len(table )+ 2 ))
- 
-
+    styler = reduce(    
+        
+        lambda a, b: 
+            a.background_gradient( 
+                cmap = sns.light_palette( result_colors[b] , as_cmap= True )
+                , subset = [b]
+                , vmin = vmin
+            )
+            ,  [ styler , * table.columns ] 
+        )
+    styler = styler.format_index( lambda x : f'{x} ({result_metric[x]})' , axis = 'columns')
+    # .set_properties(**{'background-color': 'lightgrey'})\
+    return styler
+    
 
 # # =============================================================================
 # # 
@@ -191,7 +280,6 @@ def trxns_stage1( _trxns , id ):
 @st.cache_data(max_entries = 1 , ttl = 3600)
 def trxns_stage2( _trxns , _public_holidays , id ):
 
-    
     _trxns= _trxns.with_columns(
         pl.struct( 
             ['CETTransactionStart' , 'CETTransactionStop' ] 
@@ -469,54 +557,47 @@ with st.expander("File"):
 # # Let's Go EDA
 # # =============================================================================
 @st.experimental_fragment
-def EDA():
-    with st.expander("EDA"):
-        
-        summary_statistics = trxns.select(main_vars).describe(percentiles=[0.05,0.5,0.95]).to_pandas()\
-        .loc[2:]\
-        .style.format(result_format )\
-        .set_properties(**{'text-align': 'left'})\
-        .set_table_styles([dict(selector='th', props=[('text-align', 'center')])])\
-        .bar(color = 'grey', vmin = 0,height = 30, align = 'zero')\
-        .background_gradient( subset = ['ConnectedTime'] , cmap = 'Blues' , vmin =0 )\
-        .background_gradient( subset = ['ChargeTime'] , cmap = 'Reds' , vmin =0 )\
-        .background_gradient( subset = ['TotalEnergy'] , cmap = 'Greens' , vmin =0 )\
-        .background_gradient( subset = ['MaxPower'] , cmap = 'Purples' , vmin =0 )\
-        .hide(axis="index").set_table_styles(
-            [
-                {
-                    'selector': 'th',   'props': [('background-color', 'white')]
-                }
-            ]
-        )\
-        .set_properties(**{'background-color': 'white'}, subset=['statistic'])
-        cols = st.columns((2, 5, 1))
-        with cols[1]:
-            st.components.v1.html(summary_statistics.to_html() ,scrolling=True, height=200)
-
-        fig = px.histogram(
-            trxns.select(main_vars).to_pandas()#.select_dtypes('number')\
-            .rename( columns = { 'ConnectedTime' : 'ConnectedTime(hours)'} )\
-            .rename( columns = { 'ChargeTime' : 'ChargeTime(hours)'} )\
-            .rename( columns = { 'TotalEnergy' : 'TotalEnergy(kWh)'} )\
-            .rename( columns = { 'MaxPower' : 'MaxPower(kW)'} )
-            , facet_col= 'variable'
-            # , facet_col_wrap= 2
-            # , facet_row_spacing= 0.1
-            , histnorm= 'percent'
-            , marginal= 'box'
-            , title = 'Main Variables Distribution'
-            , color_discrete_sequence = ['blue', 'red', 'green' , 'purple']
+def EDA(vars , shorten_columns = False):
+    summary_stats = trxns.select(
+            vars
+        ).describe(
+            percentiles= [ 0.05 , 0.5 , 0.95 ]
+        ).to_pandas().loc[2:].set_index('statistic').rename(
+            columns = lambda x: short_vars_map[x] if shorten_columns else x 
         )
-        # fig.update_yaxes(matches=None , showticklabels=True , title_text="")
-        fig.update_xaxes(matches=None, showticklabels=True , title_text="")
-        fig.update_layout(showlegend = False)
-        fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
-        st.plotly_chart(fig,use_container_width=True)
+
+    
+    summary_styler = table2html(summary_stats)
+    st.write('Summary Statistics')
+    st.components.v1.html( summary_styler.to_html() ,scrolling=True , height= 32* (len(summary_stats )+ 2 ))
+    
+    st.write('Summary Statistics')
+    fig = px.histogram(
+        trxns.select( vars ).to_pandas().rename(
+            columns = lambda x: short_vars_map[x] if shorten_columns else x 
+        )
+        , facet_col= 'variable'
+        # , facet_col_wrap= 3
+        # , facet_row_spacing= 0.1
+        , histnorm= 'percent'
+        , marginal= 'box'
+        # , title = 'Variables Distribution'
+        , color_discrete_map = result_colors #['blue', 'red', 'green' , 'purple']
+    )
+    # fig.update_yaxes(matches=None , showticklabels=True , title_text="")
+    fig.update_xaxes(matches=None, showticklabels=True , title_text="")
+    fig.update_layout(showlegend = False)
+    fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
+    fig.for_each_annotation(lambda a: a.update(text= f'{a.text} ({result_metric[a.text]})' ))
+    st.plotly_chart( fig , use_container_width= True )
 
 if f1 is not None:
-    EDA()
-
+    with st.expander("EDA"):
+        st.write('Dataset Variables:')
+        EDA(dataset_vars)
+        st.write('Engineered Variables:')
+        EDA(engineered_vars + transformed_vars , True)
+    
 
 # # =============================================================================
 # # Charge Power Over Time
@@ -582,7 +663,7 @@ if f1 is not None:
 # # =============================================================================
    
 @st.experimental_fragment
-def regrouping(selected_trxns):
+def regrouping(selected_trxns ,selected_vars ):
     st.write('Re-grouping')
     ns = st.number_input( 'Number of Segments' , step = 1 , min_value = 2 , max_value = 5 , key = 'nr_of_segments' )
     cols = st.columns(ns)
@@ -629,17 +710,65 @@ def regrouping(selected_trxns):
     )
 
 
-    avgs_pdf = trxns.group_by(selected_trxns.select('Segment')).agg( pl.col(segmentation_vars).mean() ).to_pandas().set_index('Segment')
+    avgs_pdf = trxns.group_by(selected_trxns.select('Segment')).agg( pl.col(analysis_vars + transformed_vars).mean() ).to_pandas().set_index('Segment')
 
     final_table = pd.concat( 
         [
-            avgs_pdf.rename(columns =short_map)#.add_prefix('Avg. ')
+            avgs_pdf.rename(columns =short_vars_map)#.add_prefix('Avg. ')
         ]
         , axis  = 1
     ).sort_index()
 
-    table2html( final_table )
- 
+    st.components.v1.html( table2html( final_table ).to_html() ,scrolling=True , height= 32* (len(final_table )+ 2 ))
+    var_nr = len(selected_vars)
+
+    if var_nr > 2:
+
+        fig = px.scatter_matrix(
+            selected_trxns
+            ,  dimensions= selected_vars
+            , color = 'Segment'
+            # , color_discrete_map= color_map
+            , title='Distributions'
+            , width=800
+            , height=800
+            , category_orders = { f'Segment': sorted(selected_trxns.select('Segment').unique().to_series().to_list() )  }
+
+        )
+        fig.update_traces(
+            showupperhalf = False
+            , diagonal_visible=False
+        )
+        st.plotly_chart(fig,use_container_width=True)
+
+    elif var_nr ==2:
+        fig = px.scatter(
+            selected_trxns
+            , x = selected_vars[0]
+            , y = selected_vars[1]
+            , color = 'Segment'
+            # , color_discrete_map= color_map
+            , title='Distributions'
+            , width=400
+            , height=400
+            , category_orders = { f'Segment': sorted(selected_trxns.select('Segment').unique().to_series().to_list() )  }
+
+        )
+        st.columns(4)[1].plotly_chart(fig,use_container_width=False)
+
+    else:
+        fig = px.box(
+            selected_trxns
+            , x = selected_vars[0]
+            , color = 'Segment'
+            # , color_discrete_map= color_map
+            , title='Distributions'
+            , width=800
+            , height=800
+
+        )
+        st.plotly_chart( fig,use_container_width=True)
+
 if f1 is not None:
     with st.expander("Segmentation"):
 
@@ -654,8 +783,9 @@ if f1 is not None:
 
         selected_vars = st.multiselect(
             'Segmentation Variables'
-            , segmentation_vars  
+            , analysis_vars  + transformed_vars
             , max_selections = 4
+            , on_change = clear_regrouping
         )
         var_nr = len(selected_vars)
         
@@ -672,7 +802,7 @@ if f1 is not None:
                 
                 for i , var_name in enumerate(selected_vars):
                     
-                    short_name = short_map[selected_vars[i]]
+                    short_name = short_vars_map[selected_vars[i]]
                     splits = cols[i].number_input( var_name , step = 1 , min_value = 1 , max_value = 4 )
                     split_list.append( splits )
                     quantile_rank = cols[i].checkbox(f'{short_name} Rank')
@@ -692,7 +822,7 @@ if f1 is not None:
                 selected_trxns = selected_trxns.with_columns(
                     pl.concat_str(
                         pl.col(
-                            [ f'{short_map[x]}Grp' for  x in selected_vars]
+                            [ f'{short_vars_map[x]}Grp' for  x in selected_vars]
                         )
                         , separator ='_'
                     ).alias(f'SubSegment')
@@ -768,7 +898,7 @@ if f1 is not None:
                     , width=400
                     , height=400
                     , category_orders = { f'SubSegment': sorted(selected_trxns.select('SubSegment').unique().to_series().to_list() )  }
-
+    
                 )
                 st.columns(4)[1].plotly_chart(fig,use_container_width=False)
 
@@ -783,12 +913,12 @@ if f1 is not None:
                     , height=800
 
                 )
-                st.plotly_chart(fig,use_container_width=True)
-            avgs_pdf = trxns.group_by(selected_trxns.select('SubSegment')).agg( pl.col(segmentation_vars).mean() ).to_pandas().set_index('SubSegment')
+                st.plotly_chart( fig,use_container_width=True)
+            avgs_pdf = trxns.group_by(selected_trxns.select('SubSegment')).agg( pl.col(analysis_vars + transformed_vars ).mean() ).to_pandas().set_index('SubSegment')
 
             final_table = pd.concat( 
                 [
-                    avgs_pdf.rename(columns =short_map)#.add_prefix('Avg. ')
+                    avgs_pdf.rename(columns =short_vars_map)#.add_prefix('Avg. ')
                 ]
                 , axis  = 1
             ).sort_index()
@@ -798,7 +928,7 @@ if f1 is not None:
             # cols = st.columns(  var_nr )
             # for i , var_name in enumerate(selected_vars):
 
-            #     short_name = short_map[selected_vars[i]]
+            #     short_name = short_vars_map[selected_vars[i]]
             #     cols[i].plotly_chart( 
             #         px.histogram( 
             #             selected_trxns 
@@ -810,5 +940,7 @@ if f1 is not None:
             #         , use_container_width=True
             #     )
 
-# # # # # # # regrouping
-            regrouping(selected_trxns) 
+# # # # # # regrouping
+            regrouping(selected_trxns ,selected_vars ) 
+            
+
