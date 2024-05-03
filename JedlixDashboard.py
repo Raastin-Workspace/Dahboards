@@ -125,9 +125,10 @@ result_format = get_result_format()
 # # Functions & Decorators & Constant Variables
 # # =============================================================================
 def clear_regrouping():
-    for i  in range(st.session_state.nr_of_segments):
-        if f'segment{i}_grps' in st.session_state:
-                st.session_state[f'segment{i}_grps'] = []
+    if 'nr_of_segments' in st.session_state:
+        for i  in range(st.session_state.nr_of_segments):
+            if f'segment{i}_grps' in st.session_state:
+                    st.session_state[f'segment{i}_grps'] = []
 
 
 def table2html( table ):
