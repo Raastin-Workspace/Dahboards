@@ -116,7 +116,9 @@ analysis_short_vars = get_analysis_short_vars()
 @st.cache_resource
 def get_short_vars_map():
     short_vars_map = { x:y for x,y in zip(analysis_vars + transformed_vars , analysis_short_vars ) }
-    return defaultdict( lambda x : x[:6] , short_vars_map)
+    return defaultdict( lambda x : x[0:12:2] , short_vars_map)
+
+    result_metric.update(short_metric)
 short_vars_map = get_short_vars_map()
 
 @st.cache_resource
@@ -136,8 +138,8 @@ def get_result_metric():
         , 'ChargeTimeLog1p':'L(1+h)'
         , 'PeakConnectedTimeLog1p':'L(1+h)'
 
-        # , 'SegmentShare':'%'
-        # , 'EnergyShare':'%'
+        , 'SegmentShare':'%'
+        , 'EnergyShare':'%'
         
     }
 
@@ -145,6 +147,7 @@ def get_result_metric():
     short_metric = { short_vars_map[x] : y  for x , y in result_metric.items() if x in short_vars_map.keys() }
     result_metric.update(avg_metric)
     result_metric.update(short_metric)
+    
     return defaultdict( lambda : '{:1.f}' , result_metric )
 
 result_metric = get_result_metric()
@@ -234,7 +237,7 @@ def table2html( table , vmin = 0):
         )
     styler = styler.format_index( lambda x : f'{x} ({result_metric[x]})' , axis = 'columns')
     # .set_properties(**{'background-color': 'lightgrey'})\
-    return styler
+    return styler.to_html()
     
 
 # # =============================================================================
@@ -569,7 +572,7 @@ def EDA(vars , shorten_columns = False):
     
     summary_styler = table2html(summary_stats)
     st.write('Summary Statistics')
-    st.components.v1.html( summary_styler.to_html() ,scrolling=True , height= 32* (len(summary_stats )+ 2 ))
+    st.components.v1.html( summary_styler ,scrolling=True , height= 32* (len(summary_stats )+ 2 ))
     
     st.write('Summary Statistics')
     fig = px.histogram(
@@ -710,18 +713,22 @@ def regrouping(selected_trxns ,selected_vars ):
     )
 
 
-    avgs_pdf = trxns.group_by(selected_trxns.select('Segment')).agg( pl.col(analysis_vars + transformed_vars).mean() ).to_pandas().set_index('Segment')
+    avgs_pdf = trxns.group_by(
+            selected_trxns.select('Segment')
+        ).agg(
+            pl.col( 'TransactionId' ).count().alias('SegmentShare')
+            , pl.col( 'TotalEnergy' ).sum().alias('EnergyShare')
+            , pl.col(analysis_vars + transformed_vars ).mean()
+        
+        ).with_columns(
+            (pl.col("SegmentShare") / pl.sum("SegmentShare") * 100 ).alias("SegmentShare")
+            , (pl.col("EnergyShare") / pl.sum("EnergyShare") * 100 ).alias("EnergyShare")
+        ).to_pandas().set_index('Segment').sort_index()
 
-    final_table = pd.concat( 
-        [
-            avgs_pdf.rename(columns =short_vars_map)#.add_prefix('Avg. ')
-        ]
-        , axis  = 1
-    ).sort_index()
-
-    st.components.v1.html( table2html( final_table ).to_html() ,scrolling=True , height= 32* (len(final_table )+ 2 ))
+    st.components.v1.html( table2html( avgs_pdf ) ,scrolling=True , height= 32* (len(avgs_pdf )+ 2 ))
+    
+    
     var_nr = len(selected_vars)
-
     if var_nr > 2:
 
         fig = px.scatter_matrix(
@@ -914,16 +921,20 @@ if f1 is not None:
 
                 )
                 st.plotly_chart( fig,use_container_width=True)
-            avgs_pdf = trxns.group_by(selected_trxns.select('SubSegment')).agg( pl.col(analysis_vars + transformed_vars ).mean() ).to_pandas().set_index('SubSegment')
+            avgs_pdf = trxns.group_by(
+                    selected_trxns.select('SubSegment')
+                ).agg(
+                    pl.col( 'TransactionId' ).count().alias('SegmentShare')
+                    , pl.col( 'TotalEnergy' ).sum().alias('EnergyShare')
+                    , pl.col(analysis_vars + transformed_vars ).mean()
+                
+                ).with_columns(
+                    (pl.col("SegmentShare") / pl.sum("SegmentShare") * 100 ).alias("SegmentShare")
+                    , (pl.col("EnergyShare") / pl.sum("EnergyShare") * 100 ).alias("EnergyShare")
+                ).to_pandas().set_index('SubSegment').sort_index()
 
-            final_table = pd.concat( 
-                [
-                    avgs_pdf.rename(columns =short_vars_map)#.add_prefix('Avg. ')
-                ]
-                , axis  = 1
-            ).sort_index()
-
-            table2html( final_table )
+            
+            st.components.v1.html( table2html( avgs_pdf ) ,scrolling=True , height= 32* (len(avgs_pdf )+ 2 ))
 
             # cols = st.columns(  var_nr )
             # for i , var_name in enumerate(selected_vars):
@@ -943,4 +954,3 @@ if f1 is not None:
 # # # # # # regrouping
             regrouping(selected_trxns ,selected_vars ) 
             
-
