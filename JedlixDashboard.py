@@ -572,7 +572,7 @@ def EDA(vars , shorten_columns = False):
     
     summary_styler = table2html(summary_stats)
     st.write('Summary Statistics')
-    st.components.v1.html( summary_styler ,scrolling=True , height= 32* (len(summary_stats )+ 2 ))
+    # st.components.v1.html( summary_styler ,scrolling=True , height= 32* (len(summary_stats )+ 2 ))
     
     st.write('Summary Statistics')
     fig = px.histogram(
