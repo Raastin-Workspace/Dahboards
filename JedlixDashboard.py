@@ -14,6 +14,7 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import streamlit.components.v1 as components
 
 # others
 import pandas as pd
@@ -574,7 +575,7 @@ def EDA(vars , shorten_columns = False):
     st.write('Summary Statistics')
     cols = st.columns([1,10,1])
     with cols[1]:
-        st.components.v1.html( summary_styler ,scrolling=True , height= 32* (len(summary_stats )+ 2 ))
+        components.html( summary_styler ,scrolling=True , height= 32* (len(summary_stats )+ 2 ))
     
     st.write('Distributions')
     fig = px.histogram(
