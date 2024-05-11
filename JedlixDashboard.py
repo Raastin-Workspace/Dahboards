@@ -573,7 +573,7 @@ def EDA(vars , shorten_columns = False):
     
     summary_styler = table2html(summary_stats)
     st.write('Summary Statistics')
-    cols = st.columns([1,10,1])
+    cols = st.columns([1.25,summary_stats.shape[1],1])
     with cols[1]:
         st.components.v1.html( summary_styler ,scrolling=True , height= 32* (len(summary_stats )+ 2 ))
     
