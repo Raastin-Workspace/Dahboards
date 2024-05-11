@@ -573,7 +573,8 @@ def EDA(vars , shorten_columns = False):
     
     summary_styler = table2html(summary_stats)
     st.write('Summary Statistics')
-    cols = st.columns([1.25,summary_stats.shape[1],1])
+    x_pos = summary_stats.shape[1]
+    cols = st.columns([  x_pos * 1.5 , x_pos**2   , x_pos * 1.5 ])
     with cols[1]:
         st.components.v1.html( summary_styler ,scrolling=True , height= 32* (len(summary_stats )+ 2 ))
     
@@ -595,7 +596,8 @@ def EDA(vars , shorten_columns = False):
     fig.update_layout(showlegend = False)
     fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
     fig.for_each_annotation(lambda a: a.update(text= f'{a.text} ({result_metric[a.text]})' ))
-    st.plotly_chart( fig , use_container_width= True )
+    
+    cols[1].plotly_chart( fig , use_container_width= True )
 
 if f1 is not None:
     with st.expander("EDA"):
@@ -957,3 +959,4 @@ if f1 is not None:
 # # # # # # regrouping
             regrouping(selected_trxns ,selected_vars ) 
             
+
