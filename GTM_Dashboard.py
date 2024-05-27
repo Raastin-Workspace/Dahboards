@@ -122,7 +122,7 @@ period_index = { x: i for i ,x in enumerate(period_labels)}
 
 
 if 'trxns_pdf' not in st.session_state:
-    st.session_state.trxns_pdf = pl.scan_csv('deposit_trxns.csv')
+    st.session_state.trxns_pdf = pl.scan_csv('adeposit_trxns.csv')
 
     st.session_state.trxns_pdf = st.session_state.trxns_pdf.with_columns( 
         pl.col(
@@ -2000,4 +2000,4 @@ else:
 # =============================================================================
 # =============================================================================
 
-
+  
