@@ -1005,12 +1005,12 @@ else:
     # 
     # =============================================================================
         
-        acq_cols[1].header("")
-        acq_cols[1].header("")
+        acq_cols[1].subheader("")
+        acq_cols[1].subheader("")
         acq_cols[2].subheader("")
         acq_cols[2].subheader("")
-        acq_cols[3].header("")
-        acq_cols[3].title("")
+        acq_cols[3].subheader("")
+        acq_cols[3].subheader("")
         
         
         acq_all = final_acqs.filter( 
@@ -1388,22 +1388,22 @@ else:
             , 'Renewed Deposits'
         )
         
-        health_cols[1].title("")
-        health_cols[1].title("")
+        health_cols[1].subheader("")
+        health_cols[1].subheader("")
         
         health_cols[1].metric( * ac_rep )
         health_cols[1].metric( * cc_rep )
         health_cols[1].metric( * rc_rep )
         
         
-        health_cols[2].title("")
-        health_cols[2].title("")
+        health_cols[2].subheader("")
+        health_cols[2].subheader("")
         health_cols[2].metric( * aa_rep )
         health_cols[2].metric( * ca_rep )
         health_cols[2].metric( * ra_rep )
         
-        health_cols[3].title("")
-        health_cols[3].title("")
+        health_cols[3].subheader("")
+        # health_cols[3].subheader("")
         health_cols[3].metric( * nd_rep )
         health_cols[3].metric( * ld_rep )
         health_cols[3].metric( * rd_rep )
@@ -1656,9 +1656,9 @@ else:
             , 'Avg. Customer Acq. Cost':'{:.2f} €'
             , 'Penetration Rate':'{:.2f} %'
             }
-        expansion_cols[1].title("")
-        expansion_cols[1].title("")
-        expansion_cols[1].title("")
+        expansion_cols[1].subheader("")
+        expansion_cols[1].subheader("")
+        #expansion_cols[1].title("")
         penetration = penetration.to_pandas()
         penetration.index += 1
         expansion_cols[1].dataframe(
