@@ -1005,11 +1005,11 @@ else:
     # 
     # =============================================================================
         
+        acq_cols[1].title("")
         # acq_cols[1].title("")
-        # acq_cols[1].title("")
+        acq_cols[2].title("")
         # acq_cols[2].title("")
-        # acq_cols[2].title("")
-        # acq_cols[3].title("")
+        acq_cols[3].title("")
         # acq_cols[3].title("")
         
         
