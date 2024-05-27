@@ -1248,7 +1248,7 @@ else:
             , color = '% DD/DUM'
             , color_continuous_scale="RdYlGn_r"
             , locationmode= 'country names'
-            , title = 'Comming {} Due Deposits to Deposits under Management Ratio by Country'.format(period_names[freq_index])
+            , title = '{} Due Deposits Ratio by Country'.format(period_labels[freq_index])
         )
         fig.update_geos(fitbounds="locations", visible=True, bgcolor= 'rgba(0,0,0,0)')
         # fig.update(layout_coloraxis_showscale=False)
