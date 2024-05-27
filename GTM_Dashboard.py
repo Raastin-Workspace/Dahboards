@@ -1079,19 +1079,19 @@ else:
             
         )
 
-        acq_cols[1].title("")
-        acq_cols[1].title("")
+        # acq_cols[1].title("")
+        # acq_cols[1].title("")
         acq_cols[1].metric( * ql_rep )
         acq_cols[1].metric( * cac_rep )
         
         
-        acq_cols[2].title("")
-        acq_cols[2].title("")
+        # acq_cols[2].title("")
+        # acq_cols[2].title("")
         acq_cols[2].metric( * vc_rep )
         acq_cols[2].metric( * tat_rep )
         
-        acq_cols[3].title("")
-        acq_cols[3].title("")
+        # acq_cols[3].title("")
+        # acq_cols[3].title("")
         acq_cols[3].metric( * nc_rep )
         acq_cols[3].metric( * crc_rep )
         
