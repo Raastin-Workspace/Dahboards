@@ -890,7 +890,7 @@ else:
         
         # st.header( "Acquisition Metrics" )
 
-        title_cols = st.columns(2)
+        # title_cols = st.columns(2)
         acq_cols = st.columns([3.5,1,1,1])
 
         x_map = dict()
@@ -1006,11 +1006,11 @@ else:
     # =============================================================================
         
         acq_cols[1].title("")
-        # acq_cols[1].title("")
+        acq_cols[1].title("")
         acq_cols[2].title("")
-        # acq_cols[2].title("")
+        acq_cols[2].title("")
         acq_cols[3].title("")
-        # acq_cols[3].title("")
+        acq_cols[3].title("")
         
         
         acq_all = final_acqs.filter( 
