@@ -1403,7 +1403,7 @@ else:
         health_cols[2].metric( * ra_rep )
         
         health_cols[3].subheader("")
-        # health_cols[3].subheader("")
+        health_cols[3].subheader("")
         health_cols[3].metric( * nd_rep )
         health_cols[3].metric( * ld_rep )
         health_cols[3].metric( * rd_rep )
