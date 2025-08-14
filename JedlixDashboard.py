@@ -511,7 +511,8 @@ with st.expander("File"):
 
 
     if f1 is None:
-        st.write('Please Upload Your File')
+        #st.write('Please Upload Your File')
+        f1 = 'open_ev_dataset.csv'
         
 
     else:
