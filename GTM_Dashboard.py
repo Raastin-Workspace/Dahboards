@@ -1780,12 +1780,12 @@ else:
             a = penetration.filter(
                 pl.col('service') == x[0] 
                 ).select(
-                    pl.all().prefix('S1_') 
+                    pl.all().name.prefix('S1_') 
                 ).with_columns( pl.lit(x[0]).alias('S1') )
             b = penetration.filter(
                 pl.col('service') == x[1] 
                 ).select( 
-                    pl.all().prefix('S2_') 
+                    pl.all().name.prefix('S2_') 
                 ).with_columns( pl.lit(x[1]).alias('S2') )
             c = a.join(b
                 , left_on= 'S1_country'
