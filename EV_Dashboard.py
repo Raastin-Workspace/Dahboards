@@ -501,8 +501,8 @@ def peakhours( starting_datetime_UTC , end_datetime_UTC ):
 
 with st.expander("File"):
 
-    # f1 = st.file_uploader(":file_folder: Upload the file" , type = (['csv' , 'xlsx']))
-    f1 = 'open_ev_dataset.csv'
+    f1 = st.file_uploader(":file_folder: Upload the file" , type = (['csv' , 'xlsx']))
+    
     if 'f_copy' not in st.session_state:
         st.session_state['f_copy'] = None
     
@@ -511,11 +511,14 @@ with st.expander("File"):
 
 
     if f1 is None:
-        st.write('Please Upload Your File')
+        # st.write('Please Upload Your File')
+        st.write('You Can Upload/Overwrite Your File')
+        f1 = 'open_ev_dataset.csv'
         
         
 
-    else:
+    # else:
+    if True:
         if st.session_state.f_copy is None or st.session_state.f_copy != f1:
             
 
