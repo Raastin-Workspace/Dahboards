@@ -560,7 +560,7 @@ with st.expander("File"):
 # # =============================================================================
 # # Let's Go EDA
 # # =============================================================================
-@st.experimental_fragment
+@st.fragment
 def EDA(vars , shorten_columns = False):
     summary_stats = trxns.select(
             vars
@@ -610,7 +610,7 @@ if f1 is not None:
 # # =============================================================================
 # # Charge Power Over Time
 # # =============================================================================
-@st.experimental_fragment
+@st.fragment
 def charging_power():
     with st.expander("Charge Power Over Time"):
         
@@ -670,7 +670,7 @@ if f1 is not None:
 # # Segmentation
 # # =============================================================================
    
-@st.experimental_fragment
+@st.fragment
 def regrouping(selected_trxns ,selected_vars ):
     st.write('Re-grouping')
     ns = st.number_input( 'Number of Segments' , step = 1 , min_value = 2 , max_value = 5 , key = 'nr_of_segments' )
