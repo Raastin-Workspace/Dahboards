@@ -512,7 +512,7 @@ with st.expander("File"):
 
     if f1 is None:
         # st.write('Please Upload Your File')
-        st.write('You Can Upload/Overwrite Your File')
+        st.write('You Can Replace the Default File')
         f1 = 'open_ev_dataset.csv'
         
         
@@ -526,7 +526,7 @@ with st.expander("File"):
             st.session_state.file_id = uuid.uuid1() 
             # st.write( st.session_state.file_id)
 
-            st.write('Your File Has Uploaded Succesfully')
+            st.write('File Has Uploaded Succesfully')
             # file_name = f1.name
         
         global data
