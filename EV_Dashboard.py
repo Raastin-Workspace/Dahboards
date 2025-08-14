@@ -788,7 +788,7 @@ def regrouping(selected_trxns ,selected_vars ):
 if f1 is not None:
     with st.expander("Segmentation"):
 
-        methods = [ 'Direct' , 'KMeans' , 'Hierarchical']
+        methods = [ 'FixedSplits' , 'KMeans' , 'Hierarchical']
         selected_method = st.radio(
             'Clustring Method' 
             , methods 
@@ -811,7 +811,7 @@ if f1 is not None:
             
             selected_trxns = trxns.select( selected_vars )#.sample(2500*var_nr).sort(selected_vars)
             split_list = []
-            if selected_method == 'Direct' :
+            if selected_method == 'FixedSplits' :
 
                 cols = st.columns(  var_nr )
                 
