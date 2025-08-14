@@ -44,7 +44,7 @@ from functools import reduce
 # =============================================================================
 
 st.set_page_config(
-    page_title= 'Jedlix Dashboard'
+    page_title= 'EV Dashboard'
     , page_icon= ':chart_with_upwards_trend:'
     , layout= 'wide'
     # ,initial_sidebar_state="collapsed"
